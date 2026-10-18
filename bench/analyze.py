@@ -3,6 +3,7 @@
 import json
 import os
 import random
+import re
 import statistics
 from collections import defaultdict
 
@@ -132,12 +133,11 @@ def median(v):
     return round(statistics.median(v), 1) if v else None
 
 
-def main():
-    rows = [json.loads(l) for l in open(RESULTS)]
+def emit_board(rows, model, cdir, cpre):
     tasks = sorted({r["task"] for r in rows})
     order = ["mojo", "ref", "aider", "pi", "dsh", "opencode"]
     clients = [c for c in order if any(r["client"] == c for r in rows)]
-    os.makedirs(CHARTS, exist_ok=True)
+    os.makedirs(cdir, exist_ok=True)
 
     by = defaultdict(list)
     for r in rows:
@@ -165,32 +165,31 @@ def main():
          f"{sum(x['pass'] for x in per[c])}/{len(per[c])}")
         for c in lb
     ]
-    open(os.path.join(CHARTS, "leaderboard.svg"), "w").write(
-        chart_bars("Success rate by harness", bars, "%"))
+    open(os.path.join(cdir, "leaderboard.svg"), "w").write(
+        chart_bars(f"Success rate by harness - {model.split('/')[-1]}", bars, "%"))
     wbars = [(NAMES.get(c, c), COLORS.get(c, MUT), median([x["wall_s"] for x in per[c]]) or 0, "")
              for c in lb]
-    open(os.path.join(CHARTS, "median_time.svg"), "w").write(
-        chart_bars("Median time per task", wbars, "s"))
+    open(os.path.join(cdir, "median_time.svg"), "w").write(
+        chart_bars(f"Median time per task - {model.split('/')[-1]}", wbars, "s"))
     tbars = [(NAMES.get(c, c), COLORS.get(c, MUT), median([x["prompt_tokens"] for x in per[c] if x["pass"]]) or 0, "")
              for c in lb]
-    open(os.path.join(CHARTS, "tokens_per_success.svg"), "w").write(
-        chart_bars("Median prompt tokens per success", tbars, ""))
-    open(os.path.join(CHARTS, "wall_strip.svg"), "w").write(
-        chart_strip("Wall-clock per run (dots = runs, bar = median)",
+    open(os.path.join(cdir, "tokens_per_success.svg"), "w").write(
+        chart_bars(f"Median prompt tokens per success - {model.split('/')[-1]}", tbars, ""))
+    open(os.path.join(cdir, "wall_strip.svg"), "w").write(
+        chart_strip(f"Wall-clock per run - {model.split('/')[-1]} (dots = runs, bar = median)",
                     [(NAMES.get(c, c), COLORS.get(c, MUT), [x["wall_s"] for x in per[c]]) for c in lb]))
     pts = [(NAMES.get(c, c), COLORS.get(c, MUT), median([x["wall_s"] for x in per[c]]) or 0,
             round(100 * sum(x["pass"] for x in per[c]) / len(per[c]))) for c in lb]
-    open(os.path.join(CHARTS, "pareto.svg"), "w").write(
-        chart_scatter("Pass rate vs speed (top-left is best)", pts))
-    open(os.path.join(CHARTS, "pass_rate.svg"), "w").write(
-        chart_grouped("Pass rate by task (%)", tasks, clients, pass_pct, 100))
-    open(os.path.join(CHARTS, "peak_rss.svg"), "w").write(
-        chart_grouped("Median peak RSS (MB)", tasks, clients, rss, ymax(rss)))
+    open(os.path.join(cdir, "pareto.svg"), "w").write(
+        chart_scatter(f"Pass rate vs speed - {model.split('/')[-1]} (top-left is best)", pts))
+    open(os.path.join(cdir, "pass_rate.svg"), "w").write(
+        chart_grouped(f"Pass rate by task (%) - {model.split('/')[-1]}", tasks, clients, pass_pct, 100))
+    open(os.path.join(cdir, "peak_rss.svg"), "w").write(
+        chart_grouped(f"Median peak RSS (MB) - {model.split('/')[-1]}", tasks, clients, rss, ymax(rss)))
 
-    # RESULTS.md
-    model = next((r.get("model") for r in rows if r.get("model")), "") or os.environ.get("MAX_MODEL", "")
-    lines = ["# Benchmark results", ""]
-    lines.append(f"Model: `{model}` on MAX (local). {len(rows)} runs: {len(tasks)} tasks x "
+    lines = [f"## `{model}`",
+             ""]
+    lines.append(f"{len(rows)} runs: {len(tasks)} tasks x "
                  f"{len(rows) // (len(tasks) * len(clients))} reps x {len(clients)} harnesses.")
     lines.append("")
     lines.append("## Leaderboard")
@@ -205,31 +204,33 @@ def main():
             f"{median([x['wall_s'] for x in rs])}s | {median([x['maxrss_mb'] for x in rs])} MB | "
             f"{median([x['prompt_tokens'] for x in rs])} |"
         )
-    lines += ["", "![leaderboard](charts/leaderboard.svg)", "",
-              "![time](charts/median_time.svg) ![strip](charts/wall_strip.svg)", "",
-              "![pareto](charts/pareto.svg) ![tokens](charts/tokens_per_success.svg)", "",
-              "## Methodology notes", "",
+    lines += ["", f"![leaderboard]({cpre}/leaderboard.svg)", "",
+              f"![time]({cpre}/median_time.svg) ![strip]({cpre}/wall_strip.svg)", "",
+              f"![pareto]({cpre}/pareto.svg) ![tokens]({cpre}/tokens_per_success.svg)", "",
+              "### Methodology notes", "",
               "- mojo-max-agent and python-loop talk to MAX on :8000 with a text-command",
               "  protocol; aider uses its edit-format prompts on :8000. pi and",
               "  deepseek-harness use native OpenAI tool calling, which this MAX serve",
               "  build cannot parse (no hermes tool parser), so they run through",
               "  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into",
-              "  structured tool_calls. Wall times include the proxy hop.",
-              "- deepseek-harness rows: Qwen3-4B reads the ~6k-token Cordis plugin system",
-              "  prompt and generates refusal-style text instead of tool calls; most runs",
-              "  died at the 420s watchdog inside a single completion. 0% here is a",
-              "  model x harness interaction, not a verdict on dsh on bigger models.",
-              "- Timeout rows count in medians; 'requests=None' means the run was killed",
-              "  before its first LLM call returned.",
-              "- Harness versions: pi 1.3.0, deepseek-harness 0.2.0-rc.2, aider 0.86.2.",
-              "", "## Pass rate by task", ""]
+              "  structured tool_calls. Wall times include the proxy hop."]
+    if "dsh" in clients:
+        lines += [
+            "- deepseek-harness rows: the model reads the ~6k-token Cordis plugin system",
+            "  prompt and may generate refusal-style text instead of tool calls; such",
+            "  runs die at the 420s watchdog inside a single completion. A 0% here is a",
+            "  model x harness interaction, not a verdict on dsh on bigger models."]
+    lines += [
+        "- Timeout rows count in medians; 'requests=None' means the run was killed",
+        "  before its first LLM call returned.",
+        "", "### Pass rate by task", ""]
     lines.append("| task | " + " | ".join(NAMES.get(c, c) for c in clients) + " |")
     lines.append("| --- |" + " --- |" * len(clients))
     for t in tasks:
         lines.append(f"| {t} | " + " | ".join(f"{pass_pct.get((t, c), '-')}%"
                                               for c in clients) + " |")
-    lines += ["", "![pass rate](charts/pass_rate.svg) ![rss](charts/peak_rss.svg)", "",
-              "## Raw runs", ""]
+    lines += ["", f"![pass rate]({cpre}/pass_rate.svg) ![rss]({cpre}/peak_rss.svg)", "",
+              "### Raw runs", ""]
     lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in rows:
@@ -237,8 +238,32 @@ def main():
             f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
             f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']} |"
         )
+    lines.append("")
+    return lines
+
+
+def main():
+    rows = [json.loads(l) for l in open(RESULTS)]
+    models = []
+    for r in rows:
+        m = r.get("model") or ""
+        if m not in models:
+            models.append(m)
+    lines = ["# Benchmark results", "",
+             "Local MAX serving (`max serve`, single replica). Harness versions:",
+             "pi 1.3.0, deepseek-harness 0.2.0-rc.2, aider 0.86.2. Verified by each",
+             "task's independent `verify.sh`; tokens are usage-reported, not scored.",
+             ""]
+    for model in models:
+        slug = re.sub(r"[^a-z0-9]+", "-", (model.split("/")[-1] or "model").lower()).strip("-") or "model"
+        lines += emit_board(
+            [r for r in rows if (r.get("model") or "") == model],
+            model or "unknown",
+            os.path.join(CHARTS, slug),
+            f"charts/{slug}",
+        )
     open(OUT_MD, "w").write("\n".join(lines) + "\n")
-    print("\n".join(lines[:18]))
+    print("\n".join(lines[:30]))
 
 
 if __name__ == "__main__":

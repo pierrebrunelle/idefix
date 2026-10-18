@@ -1,6 +1,12 @@
 # Benchmark results
 
-Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 60 runs: 6 tasks x 2 reps x 5 harnesses.
+Local MAX serving (`max serve`, single replica). Harness versions:
+pi 1.3.0, deepseek-harness 0.2.0-rc.2, aider 0.86.2. Verified by each
+task's independent `verify.sh`; tokens are usage-reported, not scored.
+
+## `Qwen/Qwen3-4B-Instruct-2507`
+
+60 runs: 6 tasks x 2 reps x 5 harnesses.
 
 ## Leaderboard
 
@@ -12,13 +18,13 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 60 runs: 6 tasks x 2 reps x
 | pi | 7/12 (58%) | 79.8s | 125.9 MB | 2750.0 |
 | deepseek-harness | 0/12 (0%) | 420.3s | 191.9 MB | None |
 
-![leaderboard](charts/leaderboard.svg)
+![leaderboard](charts/qwen3-4b-instruct-2507/leaderboard.svg)
 
-![time](charts/median_time.svg) ![strip](charts/wall_strip.svg)
+![time](charts/qwen3-4b-instruct-2507/median_time.svg) ![strip](charts/qwen3-4b-instruct-2507/wall_strip.svg)
 
-![pareto](charts/pareto.svg) ![tokens](charts/tokens_per_success.svg)
+![pareto](charts/qwen3-4b-instruct-2507/pareto.svg) ![tokens](charts/qwen3-4b-instruct-2507/tokens_per_success.svg)
 
-## Methodology notes
+### Methodology notes
 
 - mojo-max-agent and python-loop talk to MAX on :8000 with a text-command
   protocol; aider uses its edit-format prompts on :8000. pi and
@@ -26,15 +32,14 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 60 runs: 6 tasks x 2 reps x
   build cannot parse (no hermes tool parser), so they run through
   bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into
   structured tool_calls. Wall times include the proxy hop.
-- deepseek-harness rows: Qwen3-4B reads the ~6k-token Cordis plugin system
-  prompt and generates refusal-style text instead of tool calls; most runs
-  died at the 420s watchdog inside a single completion. 0% here is a
+- deepseek-harness rows: the model reads the ~6k-token Cordis plugin system
+  prompt and may generate refusal-style text instead of tool calls; such
+  runs die at the 420s watchdog inside a single completion. A 0% here is a
   model x harness interaction, not a verdict on dsh on bigger models.
 - Timeout rows count in medians; 'requests=None' means the run was killed
   before its first LLM call returned.
-- Harness versions: pi 1.3.0, deepseek-harness 0.2.0-rc.2, aider 0.86.2.
 
-## Pass rate by task
+### Pass rate by task
 
 | task | mojo-max-agent | python-loop | aider | pi | deepseek-harness |
 | --- | --- | --- | --- | --- | --- |
@@ -45,9 +50,9 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 60 runs: 6 tasks x 2 reps x
 | parse-config | 0% | 0% | 100% | 0% | 0% |
 | slugify | 50% | 0% | 100% | 0% | 0% |
 
-![pass rate](charts/pass_rate.svg) ![rss](charts/peak_rss.svg)
+![pass rate](charts/qwen3-4b-instruct-2507/pass_rate.svg) ![rss](charts/qwen3-4b-instruct-2507/peak_rss.svg)
 
-## Raw runs
+### Raw runs
 
 | harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -111,3 +116,4 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 60 runs: 6 tasks x 2 reps x
 | deepseek-harness | slugify | 1 | 0 | None | None | None | 420.3 | 192.8 | 0 |
 | pi | slugify | 2 | 0 | 1 | None | None | 420.2 | 113.6 | 143 |
 | deepseek-harness | slugify | 2 | 0 | None | None | None | 420.4 | 194.2 | 0 |
+

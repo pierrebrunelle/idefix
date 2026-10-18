@@ -8,13 +8,22 @@ post-processing vLLM's hermes parser performs server-side.
 """
 
 import json
+import os
 import re
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-UPSTREAM = "http://127.0.0.1:8000"
-LISTEN_PORT = 8001
+UPSTREAM = os.environ.get("PROXY_UPSTREAM", "http://127.0.0.1:8000")
+LISTEN_PORT = int(os.environ.get("PROXY_PORT", "8001"))
+# When set, every chat/completions request gets chat_template_kwargs merged in
+# (e.g. PROXY_TEMPLATE_KWARGS='{"enable_thinking": false}') so hybrid-thinking
+# models run non-thinking without touching per-harness request builders.
+TEMPLATE_KWARGS = json.loads(os.environ.get("PROXY_TEMPLATE_KWARGS", "{}"))
+# PROXY_REWRITE=0 disables <tool_call> rewriting: mojo and the python ref
+# client parse Hermes tool-call text natively, so they only need kwargs
+# injection (thinking off), not the structured-tool_calls transform.
+REWRITE = os.environ.get("PROXY_REWRITE", "1") != "0"
 
 TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)
 
@@ -106,7 +115,9 @@ class Handler(BaseHTTPRequestHandler):
                 wants_stream = bool(req_json.get("stream"))
                 if wants_stream:
                     req_json["stream"] = False
-                    body = json.dumps(req_json).encode()
+                if TEMPLATE_KWARGS:
+                    req_json.setdefault("chat_template_kwargs", {}).update(TEMPLATE_KWARGS)
+                body = json.dumps(req_json).encode()
             except ValueError:
                 pass
         try:
@@ -115,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
             status, headers = resp.status, resp.headers.get("Content-Type", "application/json")
         except urllib.error.HTTPError as e:
             upstream_body, status, headers = e.read(), e.code, "application/json"
-        if body and self.path.rstrip("/").endswith("chat/completions") and status == 200:
+        if body and self.path.rstrip("/").endswith("chat/completions") and status == 200 and REWRITE:
             upstream_body = rewrite_response(upstream_body)
         if wants_stream and status == 200:
             payload = to_sse(upstream_body)

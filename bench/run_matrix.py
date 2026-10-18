@@ -94,6 +94,22 @@ def dsh_cmd(repo, task_text, transcript):
 HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd, "pi": pi_cmd, "dsh": dsh_cmd}
 
 
+def configure_backends():
+    """Point the pi/dsh provider configs at MODEL before the matrix runs."""
+    pj = os.path.join(ROOT, "bench", "pi-agent", "models.json")
+    cfg = json.load(open(pj))
+    cfg["providers"]["max"]["models"] = [{"id": MODEL}]
+    with open(pj, "w") as f:
+        json.dump(cfg, f, indent=2)
+        f.write("\n")
+    dy = os.path.join(ROOT, "bench", "dsh-max.patch.yml")
+    txt = open(dy).read()
+    txt = re.sub(r"(\n\s+- id: ).+", rf"\g<1>{MODEL}", txt)
+    txt = re.sub(r"(    model: ).+", rf"\g<1>{MODEL}", txt)
+    with open(dy, "w") as f:
+        f.write(txt)
+
+
 def run_harness(name, repo, task_text, transcript_path):
     cmd, extra_env = HARNESS[name](repo, task_text, transcript_path)
     env = dict(os.environ, **extra_env)
@@ -207,6 +223,11 @@ def main():
     reps = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     harnesses = sys.argv[2].split(",") if len(sys.argv) > 2 else list(HARNESS)
     tasks = sorted(d for d in os.listdir(TASKS_DIR) if os.path.isdir(os.path.join(TASKS_DIR, d)))
+    if os.environ.get("BENCH_TASKS"):
+        wanted = set(os.environ["BENCH_TASKS"].split(","))
+        tasks = [t for t in tasks if t in wanted]
+    if {"pi", "dsh"} & set(harnesses):
+        configure_backends()
     os.makedirs(LOGS, exist_ok=True)
     for task in tasks:
         tdir = os.path.join(TASKS_DIR, task)

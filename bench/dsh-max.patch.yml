@@ -10,10 +10,10 @@
         api: openai-completions
         baseURL: http://127.0.0.1:8001/v1
         models:
-          - id: Qwen/Qwen3-4B-Instruct-2507
+          - id: Qwen/Qwen3-14B
             contextWindow: 188800
             maxTokens: 32768
 - id: agent-default-model
   config:
     provider: max
-    model: Qwen/Qwen3-4B-Instruct-2507
+    model: Qwen/Qwen3-14B

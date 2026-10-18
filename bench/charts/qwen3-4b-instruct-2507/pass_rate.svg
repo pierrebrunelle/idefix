@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="350" font-family="ui-monospace,monospace" font-size="13">
 <rect width="760" height="350" fill="#0d1117"/>
-<text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Pass rate by task (%)</text>
+<text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Pass rate by task (%) - Qwen3-4B-Instruct-2507</text>
 <text x="122" y="77" fill="#8b949e" text-anchor="end">empty-input</text>
 <rect x="130" y="58" width="520" height="2" rx="2" fill="#4f8ff7"/>
 <text x="656" y="58" fill="#8b949e">100</text>
