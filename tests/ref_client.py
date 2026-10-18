@@ -94,45 +94,46 @@ def main():
     ]
     requests = commands = 0
     prompt_tokens = 0
-    for _ in range(15):
-        body = {"model": model, "stream": False, "temperature": 0.6, "tools": TOOLS, "messages": msgs}
-        resp = post(base, body)
-        requests += 1
-        prompt_tokens = resp.get("usage", {}).get("prompt_tokens", prompt_tokens)
-        msg = resp["choices"][0]["message"]
-        content = msg.get("content") or ""
-        calls = msg.get("tool_calls") or markup_calls(content)
-        if not calls:
-            print(content)
-            print(f"[ref] requests={requests} commands={commands} prompt_tokens={prompt_tokens}", file=sys.stderr)
-            return
-        msgs.append({"role": "assistant", "content": content or None, "tool_calls": calls})
-        for call in calls:
-            args = json.loads(call["function"]["arguments"])
-            cmd = args.get("command", "")
-            print(f"[ref] bash: {cmd[:120]}", file=sys.stderr)
-            commands += 1
-            try:
-                p = subprocess.run(
-                    ["/bin/bash", "-c", cmd],
-                    capture_output=True,
-                    cwd=repo,
-                    timeout=120,
-                    stdin=subprocess.DEVNULL,
+    try:
+        for _ in range(15):
+            body = {"model": model, "stream": False, "temperature": 0.6, "tools": TOOLS, "messages": msgs}
+            resp = post(base, body)
+            requests += 1
+            prompt_tokens = resp.get("usage", {}).get("prompt_tokens", prompt_tokens)
+            msg = resp["choices"][0]["message"]
+            content = msg.get("content") or ""
+            calls = msg.get("tool_calls") or markup_calls(content)
+            if not calls:
+                print(content)
+                return
+            msgs.append({"role": "assistant", "content": content or None, "tool_calls": calls})
+            for call in calls:
+                args = json.loads(call["function"]["arguments"])
+                cmd = args.get("command", "")
+                print(f"[ref] bash: {cmd[:120]}", file=sys.stderr)
+                commands += 1
+                try:
+                    p = subprocess.run(
+                        ["/bin/bash", "-c", cmd],
+                        capture_output=True,
+                        cwd=repo,
+                        timeout=120,
+                        stdin=subprocess.DEVNULL,
+                    )
+                    out = (p.stdout + p.stderr).decode("utf8", "replace")[:65536]
+                    rc = p.returncode
+                except subprocess.TimeoutExpired:
+                    out, rc = "", 124
+                msgs.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call["id"],
+                        "content": json.dumps({"exit_code": rc, "output": out, "discarded_bytes": 0}),
+                    }
                 )
-                out = (p.stdout + p.stderr).decode("utf8", "replace")[:65536]
-                rc = p.returncode
-            except subprocess.TimeoutExpired:
-                out, rc = "", 124
-            msgs.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call["id"],
-                    "content": json.dumps({"exit_code": rc, "output": out, "discarded_bytes": 0}),
-                }
-            )
-    print("(budget exhausted)", file=sys.stderr)
-    sys.exit(2)
+        sys.exit(2)
+    finally:
+        print(f"[ref] requests={requests} commands={commands} prompt_tokens={prompt_tokens}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,2 @@
+[agent] requests=5 commands=4 prompt_tokens=850 exit=0
+The root cause was identified: `stats.py`'s `mean()` function used integer division (`//`), causing truncated values in the report. This was fixed by changing the division operator to `/` for floating-point division. After the update, `python3 test_report.py` passed successfully, verifying the fix.

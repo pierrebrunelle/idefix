@@ -69,18 +69,22 @@ def main():
         toks[(task, c)] = median([x["prompt_tokens"] for x in rs])
         reqs[(task, c)] = median([x["requests"] for x in rs])
 
+    def ymax(d):
+        v = [x for x in d.values() if x is not None]
+        return (max(v) if v else 1) * 1.1
     svg = svg_grouped_bars("Pass rate by task (%)", tasks, clients, pass_pct, 100)
     open(os.path.join(CHARTS, "pass_rate.svg"), "w").write(svg)
-    svg = svg_grouped_bars("Median wall time (s)", tasks, clients, wall, max(wall.values() or [1]) * 1.1)
+    svg = svg_grouped_bars("Median wall time (s)", tasks, clients, wall, ymax(wall))
     open(os.path.join(CHARTS, "wall_time.svg"), "w").write(svg)
-    svg = svg_grouped_bars("Median peak RSS (MB)", tasks, clients, rss, max(rss.values() or [1]) * 1.1)
+    svg = svg_grouped_bars("Median peak RSS (MB)", tasks, clients, rss, ymax(rss))
     open(os.path.join(CHARTS, "peak_rss.svg"), "w").write(svg)
-    svg = svg_grouped_bars("Median prompt tokens", tasks, clients, toks, max(toks.values() or [1]) * 1.1)
+    svg = svg_grouped_bars("Median prompt tokens", tasks, clients, toks, ymax(toks))
     open(os.path.join(CHARTS, "prompt_tokens.svg"), "w").write(svg)
 
     # overall rows per client
     lines = ["# Benchmark results", ""]
-    lines.append(f"Model: `{os.environ.get('MAX_MODEL', 'Qwen/Qwen3-1.7B')}` on MAX (CPU, float32). "
+    model = next((r.get("model") for r in rows if r.get("model")), "") or os.environ.get("MAX_MODEL", "")
+    lines.append(f"Model: `{model}` on MAX. "
                  f"{len(rows)} runs across {len(tasks)} tasks x {len(clients)} clients.")
     lines.append("")
     lines.append("## Pass rate")

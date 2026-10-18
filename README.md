@@ -86,8 +86,13 @@ make test       # stub-server trouble-path suite
 ## Benchmark
 
 ```bash
-# with `max serve` running a tool-capable model:
-MAX_MODEL=Qwen/Qwen3-1.7B python3 bench/run_matrix.py 2
+# GPU serving (fastest): install Metal toolchain once, then:
+xcodebuild -downloadComponent MetalToolchain
+max serve --model Qwen/Qwen3-4B-Instruct-2507   # GPU default
+
+# CPU serving (no toolchain): --devices cpu --quantization-encoding float32
+
+MAX_MODEL=Qwen/Qwen3-4B-Instruct-2507 python3 bench/run_matrix.py 2
 python3 bench/analyze.py
 ```
 
@@ -109,11 +114,16 @@ peak RSS (via `wait4` rusage) into `bench/results.jsonl`. `analyze.py` writes
 
 ## Benchmark findings
 
-See `bench/RESULTS.md`. Headline: task success at 1.7B is sampling-bound, not
-client-bound — the identical Python loop and the Mojo agent produce the same
-outcome distribution. Agent CPU time per run is ~0.01 s; all wall time is
-model inference. A larger model or a server-side tool parser raises the pass
-rate without changing the client.
+Full data in `bench/RESULTS.md` (24 runs, Qwen3-4B on GPU). Headline:
+
+- Pass rate: mojo 75% (9/12), ref 67% (8/12) — identical protocol, identical
+  outcome distribution; the four easy tasks pass 100% on both clients, the
+  hardest fails both.
+- Peak RSS: 15.8 MB (mojo) vs 18.0 MB (ref) — ~12% lighter on every run.
+- Median wall: 24.5 s vs 31.5 s — all wall time is model inference; the
+  client adds ~0.01 s of CPU.
+- A smaller model (Qwen3-1.7B fp32 CPU) passes the same suite far less often;
+  serving config dominates correctness, the client dominates footprint.
 
 ## Limits of this version
 

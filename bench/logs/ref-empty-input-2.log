@@ -1,0 +1,10 @@
+[ref] bash: cat stats.py
+[ref] bash: echo "def average(nums):
+    if len(nums) == 0:
+        return 0.0
+    return sum(nums) / len(nums)" > stats.py
+[ref] bash: python3 test_stats.py
+[ref] requests=3 commands=3 prompt_tokens=828
+The `stats.py` file has been updated to handle empty lists by returning `0.0` when the input list is empty. The fix was verified by running `python3 test_stats.py`, which successfully passed the test. 
+
+The change ensures that `average([])` now returns `0.0` instead of raising a `ZeroDivisionError`. The test result confirms the fix is working as expected.

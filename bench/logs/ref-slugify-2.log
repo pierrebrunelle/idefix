@@ -1,0 +1,35 @@
+[ref] bash: cat slug.py
+[ref] bash: echo "def slugify(title):
+    return title.lower().replace(" ", "-")\n" > slug.py
+[ref] bash: python3 test_slug.py
+[ref] bash: echo "def slugify(title):
+    # Remove leading/trailing whitespace
+    title = title.strip()
+    # Replace multiple spac
+[ref] bash: python3 test_slug.py
+[ref] bash: echo "def slugify(title):
+    # Remove leading/trailing whitespace
+    title = title.strip()
+    # Replace multiple spac
+[ref] bash: python3 test_slug.py
+[ref] bash: echo "def slugify(title):
+    # Remove leading/trailing whitespace
+    title = title.strip()
+    # Replace multiple spac
+[ref] bash: python3 test_slug.py
+[ref] bash: echo "def slugify(title):
+    # Remove leading/trailing whitespace
+    title = title.strip()
+    # Replace multiple spac
+[ref] bash: python3 test_slug.py
+[ref] bash: echo "def slugify(title):
+    title = title.strip()
+    title = ' '.join(title.split())
+    title = ''.join(char if char
+[ref] bash: python3 test_slug.py
+[ref] bash: echo "def slugify(title):
+    title = title.strip()
+    title = ' '.join(title.split())
+    title = ''.join(char if char
+[ref] bash: python3 test_slug.py
+(budget exhausted)

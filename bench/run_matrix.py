@@ -91,11 +91,11 @@ def main():
     reps = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     tasks = sorted(d for d in os.listdir(TASKS_DIR) if os.path.isdir(os.path.join(TASKS_DIR, d)))
     os.makedirs(LOGS, exist_ok=True)
-    for client in ("mojo", "ref"):
-        for task in tasks:
-            tdir = os.path.join(TASKS_DIR, task)
-            task_text = open(os.path.join(tdir, "task.txt")).read().strip()
-            for rep in range(1, reps + 1):
+    for task in tasks:
+        tdir = os.path.join(TASKS_DIR, task)
+        task_text = open(os.path.join(tdir, "task.txt")).read().strip()
+        for rep in range(1, reps + 1):
+            for client in ("mojo", "ref"):
                 repo = tempfile.mkdtemp(prefix=f"bench-{task}-")
                 shutil.copytree(os.path.join(tdir, "repo"), repo, dirs_exist_ok=True)
                 transcript = os.path.join(repo, "transcript.json")
@@ -109,6 +109,7 @@ def main():
                     "client": client,
                     "task": task,
                     "rep": rep,
+                    "model": os.environ.get("MAX_MODEL", ""),
                     "pass": vf.returncode == 0,
                     "requests": stat(r["log"], "requests"),
                     "commands": stat(r["log"], "commands"),

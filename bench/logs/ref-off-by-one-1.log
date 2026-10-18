@@ -1,0 +1,6 @@
+[ref] bash: cat seq.py
+[ref] bash: echo "def first_n(n):
+    return list(range(1, n + 1))" > seq.py
+[ref] bash: python3 test_seq.py
+[ref] requests=4 commands=3 prompt_tokens=803
+The bug in `seq.py` has been fixed. The `first_n(n)` function now correctly returns the first n natural numbers starting at 1, inclusive of n. The fix was verified by running `python3 test_seq.py`, which passed successfully.

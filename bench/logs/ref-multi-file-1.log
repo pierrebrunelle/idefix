@@ -1,0 +1,6 @@
+[ref] bash: grep -r "mean" stats.py
+[ref] bash: cat stats.py
+[ref] bash: echo 'def mean(xs):
+    return sum(xs) / len(xs)' > stats.py && python3 test_report.py
+[ref] requests=4 commands=3 prompt_tokens=768
+The root cause was integer division in `stats.py`'s `mean()` function, which caused truncated values in the report. The function was updated to use floating-point division (`/` instead of `//`). After the fix, `python3 test_report.py` passed successfully, verifying the correction.
