@@ -79,6 +79,14 @@ def pi_cmd(repo, task_text, transcript):
     ], {"PI_CODING_AGENT_DIR": os.path.join(ROOT, "bench", "pi-agent")}
 
 
+def opencode_cmd(repo, task_text, transcript):
+    return [
+        "opencode", "run", "--format", "json",
+        "-m", f"max/{MODEL}",
+        task_text,
+    ], {"OPENCODE_CONFIG": os.path.join(ROOT, "bench", "opencode.json")}
+
+
 def dsh_cmd(repo, task_text, transcript):
     return [
         "dsh", "--profile", "headless",
@@ -91,7 +99,8 @@ def dsh_cmd(repo, task_text, transcript):
     }
 
 
-HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd, "pi": pi_cmd, "dsh": dsh_cmd}
+HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd, "pi": pi_cmd,
+           "dsh": dsh_cmd, "opencode": opencode_cmd}
 
 
 def configure_backends():
@@ -108,6 +117,12 @@ def configure_backends():
     txt = re.sub(r"(    model: ).+", rf"\g<1>{MODEL}", txt)
     with open(dy, "w") as f:
         f.write(txt)
+    oc = os.path.join(ROOT, "bench", "opencode.json")
+    ocfg = json.load(open(oc))
+    ocfg["provider"]["max"]["models"] = {MODEL: {}}
+    with open(oc, "w") as f:
+        json.dump(ocfg, f, indent=2)
+        f.write("\n")
 
 
 def run_harness(name, repo, task_text, transcript_path):
@@ -188,6 +203,38 @@ def stats_for(name, log):
             "prompt_tokens": (usage[-1]["input"] + usage[-1].get("cacheRead", 0))
             if usage else None,
         }
+    if name == "opencode":
+        events = []
+        for line in log.splitlines():
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                pass
+        def walk(o):
+            # usage objects live under step_finish payloads at varying depth
+            if isinstance(o, dict):
+                if "tokens" in o and isinstance(o["tokens"], dict):
+                    yield o["tokens"]
+                for v in o.values():
+                    yield from walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    yield from walk(v)
+        usages = []
+        for e in events:
+            if e.get("type") == "step_finish":
+                usages.extend(walk(e))
+        last = usages[-1] if usages else {}
+        inp = (last.get("input") or 0) + (last.get("cache", {}).get("read") or 0)
+        return {
+            "requests": sum(1 for e in events if e.get("type") == "step_start") or None,
+            "commands": sum(
+                1 for e in events
+                if e.get("type") == "tool_use"
+                and "bash" in str(e.get("part", {}).get("tool", e.get("tool", "")))
+            ) or None,
+            "prompt_tokens": inp or None,
+        }
     if name == "dsh":
         events = []
         for line in log.splitlines():
@@ -226,7 +273,7 @@ def main():
     if os.environ.get("BENCH_TASKS"):
         wanted = set(os.environ["BENCH_TASKS"].split(","))
         tasks = [t for t in tasks if t in wanted]
-    if {"pi", "dsh"} & set(harnesses):
+    if {"pi", "dsh", "opencode"} & set(harnesses):
         configure_backends()
     os.makedirs(LOGS, exist_ok=True)
     for task in tasks:
