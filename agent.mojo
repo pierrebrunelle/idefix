@@ -202,20 +202,24 @@ def main() raises:
         )
         var req_ms = (deadline - bindings.now_seconds()) * 1000
         var r = bindings.http_post(
-            cfg.base_url + "/chat/completions", body, cfg.bearer, req_ms
+            cfg.base_url + "/chat/completions", body, cfg.bearer, max(req_ms, 1)
         )
         requests += 1
         var code = r[0]
         var resp = r[1]
         vlog(cfg, "request " + String(requests) + " -> http " + String(code))
-        if code == 0:
+        if code == 0 and bindings.now_seconds() < deadline:
             # transport error: one retry
             req_ms = (deadline - bindings.now_seconds()) * 1000
             r = bindings.http_post(
-                cfg.base_url + "/chat/completions", body, cfg.bearer, req_ms
+                cfg.base_url + "/chat/completions", body, cfg.bearer, max(req_ms, 1)
             )
             code = r[0]
             resp = r[1]
+        if code == 0 and bindings.now_seconds() > deadline:
+            bindings.eprint("[agent] --max-seconds exceeded")
+            exit_code = 2
+            break
         if code != 200:
             bindings.eprint("[agent] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
             exit_code = 3
