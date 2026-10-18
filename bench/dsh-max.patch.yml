@@ -1,0 +1,19 @@
+# Patch overlay for `dsh --profile headless`: mount the local MAX server
+# (via bench/toolcall_proxy.py on :8001, which translates Qwen's Hermes
+# <tool_call> text into OpenAI tool_calls) as a pi-ai provider route and make
+# it the agent's default model.
+- id: llm-pi-ai
+  config:
+    providers:
+      max:
+        apiKeyEnv: DSH_MAX_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8001/v1
+        models:
+          - id: Qwen/Qwen3-4B-Instruct-2507
+            contextWindow: 188800
+            maxTokens: 32768
+- id: agent-default-model
+  config:
+    provider: max
+    model: Qwen/Qwen3-4B-Instruct-2507

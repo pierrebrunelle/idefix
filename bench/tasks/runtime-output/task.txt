@@ -1,0 +1,1 @@
+In this repo, jsonq.py should print the value of a top-level key from a JSON file: 'python3 jsonq.py config.json name' must print 'webserver' and nothing else. It currently crashes. Fix it and verify with bash, then report.

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="224" font-family="ui-monospace,monospace" font-size="13">
-<rect width="720" height="224" fill="#0d1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="316" font-family="ui-monospace,monospace" font-size="13">
+<rect width="720" height="316" fill="#0d1117"/>
 <text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Success rate by harness</text>
 <text x="138" y="80" fill="#8b949e" text-anchor="end">aider</text>
 <rect x="150" y="60" width="420" height="26" rx="3" fill="#f7a24f"/>
@@ -13,4 +13,12 @@
 <rect x="150" y="152" width="281" height="26" rx="3" fill="#9a9a9a"/>
 <text x="441" y="171" fill="#e6edf3" font-weight="bold">67%</text>
 <text x="487" y="171" fill="#8b949e">8/12</text>
+<text x="138" y="218" fill="#8b949e" text-anchor="end">pi</text>
+<rect x="150" y="198" width="244" height="26" rx="3" fill="#2dd4bf"/>
+<text x="404" y="217" fill="#e6edf3" font-weight="bold">58%</text>
+<text x="450" y="217" fill="#8b949e">7/12</text>
+<text x="138" y="264" fill="#8b949e" text-anchor="end">deepseek-harness</text>
+<rect x="150" y="244" width="2" height="26" rx="3" fill="#f778ba"/>
+<text x="162" y="263" fill="#e6edf3" font-weight="bold">0%</text>
+<text x="200" y="263" fill="#8b949e">0/12</text>
 </svg>

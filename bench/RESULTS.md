@@ -1,6 +1,6 @@
 # Benchmark results
 
-Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 36 runs: 6 tasks x 2 reps x 3 harnesses.
+Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 60 runs: 6 tasks x 2 reps x 5 harnesses.
 
 ## Leaderboard
 
@@ -9,6 +9,8 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 36 runs: 6 tasks x 2 reps x
 | aider | 12/12 (100%) | 23.1s | 250.2 MB | 811.0 |
 | mojo-max-agent | 9/12 (75%) | 24.5s | 15.8 MB | 933.5 |
 | python-loop | 8/12 (67%) | 31.5s | 18.0 MB | 822 |
+| pi | 7/12 (58%) | 79.8s | 125.9 MB | 2750.0 |
+| deepseek-harness | 0/12 (0%) | 420.3s | 191.9 MB | None |
 
 ![leaderboard](charts/leaderboard.svg)
 
@@ -16,16 +18,32 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 36 runs: 6 tasks x 2 reps x
 
 ![pareto](charts/pareto.svg) ![tokens](charts/tokens_per_success.svg)
 
+## Methodology notes
+
+- mojo-max-agent and python-loop talk to MAX on :8000 with a text-command
+  protocol; aider uses its edit-format prompts on :8000. pi and
+  deepseek-harness use native OpenAI tool calling, which this MAX serve
+  build cannot parse (no hermes tool parser), so they run through
+  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into
+  structured tool_calls. Wall times include the proxy hop.
+- deepseek-harness rows: Qwen3-4B reads the ~6k-token Cordis plugin system
+  prompt and generates refusal-style text instead of tool calls; most runs
+  died at the 420s watchdog inside a single completion. 0% here is a
+  model x harness interaction, not a verdict on dsh on bigger models.
+- Timeout rows count in medians; 'requests=None' means the run was killed
+  before its first LLM call returned.
+- Harness versions: pi 1.3.0, deepseek-harness 0.2.0-rc.2, aider 0.86.2.
+
 ## Pass rate by task
 
-| task | mojo-max-agent | python-loop | aider |
-| --- | --- | --- | --- |
-| empty-input | 100% | 100% | 100% |
-| fix-add | 100% | 100% | 100% |
-| multi-file | 100% | 100% | 100% |
-| off-by-one | 100% | 100% | 100% |
-| parse-config | 0% | 0% | 100% |
-| slugify | 50% | 0% | 100% |
+| task | mojo-max-agent | python-loop | aider | pi | deepseek-harness |
+| --- | --- | --- | --- | --- | --- |
+| empty-input | 100% | 100% | 100% | 100% | 0% |
+| fix-add | 100% | 100% | 100% | 100% | 0% |
+| multi-file | 100% | 100% | 100% | 100% | 0% |
+| off-by-one | 100% | 100% | 100% | 50% | 0% |
+| parse-config | 0% | 0% | 100% | 0% | 0% |
+| slugify | 50% | 0% | 100% | 0% | 0% |
 
 ![pass rate](charts/pass_rate.svg) ![rss](charts/peak_rss.svg)
 
@@ -69,3 +87,27 @@ Model: `Qwen/Qwen3-4B-Instruct-2507` on MAX (local). 36 runs: 6 tasks x 2 reps x
 | aider | parse-config | 2 | 1 | 1 | None | 892 | 47.0 | 243.9 | 0 |
 | aider | slugify | 1 | 1 | 1 | None | 815 | 57.4 | 253.4 | 0 |
 | aider | slugify | 2 | 1 | 1 | None | 815 | 54.3 | 244.0 | 0 |
+| pi | empty-input | 1 | 1 | 5 | 2 | 2769 | 46.8 | 127.3 | 0 |
+| deepseek-harness | empty-input | 1 | 0 | None | None | None | 420.5 | 193.8 | 0 |
+| pi | empty-input | 2 | 1 | 5 | 2 | 2770 | 54.8 | 128.8 | 0 |
+| deepseek-harness | empty-input | 2 | 0 | 1 | None | None | 326.1 | 191.5 | 0 |
+| pi | fix-add | 1 | 1 | 4 | 1 | 2568 | 48.4 | 125.8 | 0 |
+| deepseek-harness | fix-add | 1 | 0 | None | None | None | 420.3 | 185.0 | 0 |
+| pi | fix-add | 2 | 1 | 4 | 1 | 2566 | 54.7 | 126.3 | 0 |
+| deepseek-harness | fix-add | 2 | 0 | 1 | None | None | 305.3 | 192.0 | 0 |
+| pi | multi-file | 1 | 1 | 5 | 2 | 2731 | 80.7 | 127.2 | 0 |
+| deepseek-harness | multi-file | 1 | 0 | None | None | None | 420.3 | 191.9 | 0 |
+| pi | multi-file | 2 | 1 | 8 | 5 | 2874 | 165.4 | 115.4 | 0 |
+| deepseek-harness | multi-file | 2 | 0 | None | None | None | 420.5 | 187.9 | 0 |
+| pi | off-by-one | 1 | 1 | 4 | 1 | 2585 | 78.8 | 127.0 | 0 |
+| deepseek-harness | off-by-one | 1 | 0 | None | None | None | 420.5 | 191.8 | 0 |
+| pi | off-by-one | 2 | 0 | 2 | 1 | 2455 | 58.5 | 114.5 | 0 |
+| deepseek-harness | off-by-one | 2 | 0 | 1 | None | None | 347.5 | 186.6 | 0 |
+| pi | parse-config | 1 | 0 | 4 | 2 | 2970 | 420.4 | 126.0 | 143 |
+| deepseek-harness | parse-config | 1 | 0 | 1 | None | None | 376.1 | 192.9 | 0 |
+| pi | parse-config | 2 | 0 | 4 | 1 | 2901 | 209.5 | 109.9 | 0 |
+| deepseek-harness | parse-config | 2 | 0 | None | None | None | 420.5 | 191.6 | 0 |
+| pi | slugify | 1 | 0 | 1 | None | None | 420.1 | 124.6 | 143 |
+| deepseek-harness | slugify | 1 | 0 | None | None | None | 420.3 | 192.8 | 0 |
+| pi | slugify | 2 | 0 | 1 | None | None | 420.2 | 113.6 | 143 |
+| deepseek-harness | slugify | 2 | 0 | None | None | None | 420.4 | 194.2 | 0 |

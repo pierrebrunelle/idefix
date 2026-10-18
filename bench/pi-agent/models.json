@@ -1,0 +1,10 @@
+{
+  "providers": {
+    "max": {
+      "baseUrl": "http://127.0.0.1:8001/v1",
+      "api": "openai-completions",
+      "apiKey": "dummy",
+      "models": [{ "id": "Qwen/Qwen3-4B-Instruct-2507" }]
+    }
+  }
+}

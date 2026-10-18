@@ -7,12 +7,14 @@ import statistics
 from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RESULTS = os.path.join(ROOT, "bench", "results.jsonl")
-CHARTS = os.path.join(ROOT, "bench", "charts")
-OUT_MD = os.path.join(ROOT, "bench", "RESULTS.md")
+RESULTS = os.environ.get("BENCH_RESULTS", os.path.join(ROOT, "bench", "results.jsonl"))
+CHARTS = os.environ.get("BENCH_CHARTS", os.path.join(ROOT, "bench", "charts"))
+OUT_MD = os.environ.get("BENCH_OUT_MD", os.path.join(ROOT, "bench", "RESULTS.md"))
 
-COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa"}
-NAMES = {"mojo": "mojo-max-agent", "ref": "python-loop", "aider": "aider", "opencode": "opencode"}
+COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa",
+          "pi": "#2dd4bf", "dsh": "#f778ba"}
+NAMES = {"mojo": "mojo-max-agent", "ref": "python-loop", "aider": "aider", "opencode": "opencode",
+         "pi": "pi", "dsh": "deepseek-harness"}
 BG, FG, MUT, GRID = "#0d1117", "#e6edf3", "#8b949e", "#21262d"
 random.seed(7)
 
@@ -133,7 +135,7 @@ def median(v):
 def main():
     rows = [json.loads(l) for l in open(RESULTS)]
     tasks = sorted({r["task"] for r in rows})
-    order = ["mojo", "ref", "aider", "opencode"]
+    order = ["mojo", "ref", "aider", "pi", "dsh", "opencode"]
     clients = [c for c in order if any(r["client"] == c for r in rows)]
     os.makedirs(CHARTS, exist_ok=True)
 
@@ -206,7 +208,21 @@ def main():
     lines += ["", "![leaderboard](charts/leaderboard.svg)", "",
               "![time](charts/median_time.svg) ![strip](charts/wall_strip.svg)", "",
               "![pareto](charts/pareto.svg) ![tokens](charts/tokens_per_success.svg)", "",
-              "## Pass rate by task", ""]
+              "## Methodology notes", "",
+              "- mojo-max-agent and python-loop talk to MAX on :8000 with a text-command",
+              "  protocol; aider uses its edit-format prompts on :8000. pi and",
+              "  deepseek-harness use native OpenAI tool calling, which this MAX serve",
+              "  build cannot parse (no hermes tool parser), so they run through",
+              "  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into",
+              "  structured tool_calls. Wall times include the proxy hop.",
+              "- deepseek-harness rows: Qwen3-4B reads the ~6k-token Cordis plugin system",
+              "  prompt and generates refusal-style text instead of tool calls; most runs",
+              "  died at the 420s watchdog inside a single completion. 0% here is a",
+              "  model x harness interaction, not a verdict on dsh on bigger models.",
+              "- Timeout rows count in medians; 'requests=None' means the run was killed",
+              "  before its first LLM call returned.",
+              "- Harness versions: pi 1.3.0, deepseek-harness 0.2.0-rc.2, aider 0.86.2.",
+              "", "## Pass rate by task", ""]
     lines.append("| task | " + " | ".join(NAMES.get(c, c) for c in clients) + " |")
     lines.append("| --- |" + " --- |" * len(clients))
     for t in tasks:

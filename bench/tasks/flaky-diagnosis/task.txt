@@ -1,0 +1,1 @@
+In this repo, test_report.py fails roughly half of the time because report.py first_key() depends on set iteration order. Find the nondeterminism and fix report.py so the test passes reliably - do NOT modify the test. Run 'python3 test_report.py' several times in bash to confirm, then report.

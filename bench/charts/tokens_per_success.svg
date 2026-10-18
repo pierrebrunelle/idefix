@@ -1,13 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="224" font-family="ui-monospace,monospace" font-size="13">
-<rect width="720" height="224" fill="#0d1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="316" font-family="ui-monospace,monospace" font-size="13">
+<rect width="720" height="316" fill="#0d1117"/>
 <text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Median prompt tokens per success</text>
 <text x="138" y="80" fill="#8b949e" text-anchor="end">aider</text>
-<rect x="150" y="60" width="401" height="26" rx="3" fill="#f7a24f"/>
-<text x="561" y="79" fill="#e6edf3" font-weight="bold">811</text>
+<rect x="150" y="60" width="125" height="26" rx="3" fill="#f7a24f"/>
+<text x="285" y="79" fill="#e6edf3" font-weight="bold">811</text>
 <text x="138" y="126" fill="#8b949e" text-anchor="end">mojo-max-agent</text>
-<rect x="150" y="106" width="420" height="26" rx="3" fill="#4f8ff7"/>
-<text x="580" y="125" fill="#e6edf3" font-weight="bold">850</text>
+<rect x="150" y="106" width="131" height="26" rx="3" fill="#4f8ff7"/>
+<text x="291" y="125" fill="#e6edf3" font-weight="bold">850</text>
 <text x="138" y="172" fill="#8b949e" text-anchor="end">python-loop</text>
-<rect x="150" y="152" width="401" height="26" rx="3" fill="#9a9a9a"/>
-<text x="561" y="171" fill="#e6edf3" font-weight="bold">812.5</text>
+<rect x="150" y="152" width="125" height="26" rx="3" fill="#9a9a9a"/>
+<text x="285" y="171" fill="#e6edf3" font-weight="bold">812.5</text>
+<text x="138" y="218" fill="#8b949e" text-anchor="end">pi</text>
+<rect x="150" y="198" width="420" height="26" rx="3" fill="#2dd4bf"/>
+<text x="580" y="217" fill="#e6edf3" font-weight="bold">2731</text>
+<text x="138" y="264" fill="#8b949e" text-anchor="end">deepseek-harness</text>
+<rect x="150" y="244" width="2" height="26" rx="3" fill="#f778ba"/>
+<text x="162" y="263" fill="#e6edf3" font-weight="bold">0</text>
 </svg>

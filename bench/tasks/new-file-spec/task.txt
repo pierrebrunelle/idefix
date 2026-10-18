@@ -1,0 +1,1 @@
+In this repo, cli.py imports a module render.py that does not exist. Create render.py implementing render_table(rows, headers) so that running 'python3 cli.py' prints a bordered ASCII table with the headers NAME and AGE and two rows (Ada, 36) and (Linus, 55). The output must contain the strings '| NAME | AGE |', 'Ada', and '55'. Use bash to iterate until it works, then report.

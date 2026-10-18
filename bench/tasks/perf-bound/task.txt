@@ -1,0 +1,1 @@
+In this repo, fibs.py computes fib(40) with naive recursion and takes well over 10 seconds. Make fib() fast enough that 'python3 fibs.py' finishes in under 5 seconds while still printing the correct value (fib(40) = 102334155). Use bash to iterate, then report.

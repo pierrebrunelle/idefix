@@ -6,26 +6,30 @@
 <line x1="90" y1="56" x2="720" y2="56" stroke="#21262d"/>
 <text x="80" y="60" fill="#8b949e" text-anchor="end">100%</text>
 <line x1="248" y1="56" x2="248" y2="370" stroke="#21262d"/>
-<text x="248" y="388" fill="#8b949e" text-anchor="middle">8s</text>
+<text x="248" y="388" fill="#8b949e" text-anchor="middle">105s</text>
 <line x1="90" y1="134" x2="720" y2="134" stroke="#21262d"/>
 <text x="80" y="138" fill="#8b949e" text-anchor="end">75%</text>
 <line x1="405" y1="56" x2="405" y2="370" stroke="#21262d"/>
-<text x="405" y="388" fill="#8b949e" text-anchor="middle">16s</text>
+<text x="405" y="388" fill="#8b949e" text-anchor="middle">210s</text>
 <line x1="90" y1="213" x2="720" y2="213" stroke="#21262d"/>
 <text x="80" y="217" fill="#8b949e" text-anchor="end">50%</text>
 <line x1="562" y1="56" x2="562" y2="370" stroke="#21262d"/>
-<text x="562" y="388" fill="#8b949e" text-anchor="middle">24s</text>
+<text x="562" y="388" fill="#8b949e" text-anchor="middle">315s</text>
 <line x1="90" y1="292" x2="720" y2="292" stroke="#21262d"/>
 <text x="80" y="296" fill="#8b949e" text-anchor="end">25%</text>
 <line x1="720" y1="56" x2="720" y2="370" stroke="#21262d"/>
-<text x="720" y="388" fill="#8b949e" text-anchor="middle">32s</text>
+<text x="720" y="388" fill="#8b949e" text-anchor="middle">420s</text>
 <line x1="90" y1="370" x2="720" y2="370" stroke="#21262d"/>
 <text x="80" y="374" fill="#8b949e" text-anchor="end">0%</text>
-<circle cx="552" cy="56" r="9" fill="#f7a24f"/>
-<text x="566" y="61" fill="#e6edf3">aider</text>
-<circle cx="580" cy="134" r="9" fill="#4f8ff7"/>
-<text x="594" y="140" fill="#e6edf3">mojo-max-agent</text>
-<circle cx="720" cy="160" r="9" fill="#9a9a9a"/>
-<text x="734" y="165" fill="#e6edf3">python-loop</text>
+<circle cx="125" cy="56" r="9" fill="#f7a24f"/>
+<text x="139" y="61" fill="#e6edf3">aider</text>
+<circle cx="127" cy="134" r="9" fill="#4f8ff7"/>
+<text x="141" y="140" fill="#e6edf3">mojo-max-agent</text>
+<circle cx="137" cy="160" r="9" fill="#9a9a9a"/>
+<text x="151" y="165" fill="#e6edf3">python-loop</text>
+<circle cx="210" cy="188" r="9" fill="#2dd4bf"/>
+<text x="224" y="193" fill="#e6edf3">pi</text>
+<circle cx="720" cy="370" r="9" fill="#f778ba"/>
+<text x="734" y="375" fill="#e6edf3">deepseek-harness</text>
 <text x="90" y="416" fill="#8b949e">median wall time per task (s)  |  pass rate</text>
 </svg>

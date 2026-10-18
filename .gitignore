@@ -4,3 +4,6 @@ libagent_c.a
 *.o
 __pycache__/
 .DS_Store
+
+# dsh runtime state (sessions, storages)
+bench/dsh-home/

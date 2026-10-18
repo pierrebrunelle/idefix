@@ -17,12 +17,15 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TASKS_DIR = os.path.join(ROOT, "bench", "tasks")
-RESULTS = os.path.join(ROOT, "bench", "results.jsonl")
-LOGS = os.path.join(ROOT, "bench", "logs")
+RESULTS = os.environ.get("BENCH_RESULTS", os.path.join(ROOT, "bench", "results.jsonl"))
+LOGS = os.environ.get("BENCH_LOGS", os.path.join(ROOT, "bench", "logs"))
 TIMEOUT_S = int(os.environ.get("BENCH_TIMEOUT", "420"))
 AGENT_MAX_SECONDS = TIMEOUT_S - 20  # inner budget must fire before watchdog
 MODEL = os.environ.get("MAX_MODEL", "")
 BASE = os.environ.get("MAX_BASE_URL", "http://127.0.0.1:8000/v1")
+# pi and dsh use native OpenAI tool calling; bench/toolcall_proxy.py
+# translates Qwen's Hermes <tool_call> text into structured tool_calls.
+TOOLCALL_BASE = os.environ.get("BENCH_TOOLCALL_BASE", "http://127.0.0.1:8001/v1")
 
 
 def mojo_cmd(repo, task_text, transcript):
@@ -66,7 +69,29 @@ def aider_cmd(repo, task_text, transcript):
     return cmd, {"OPENAI_API_KEY": "dummy"}
 
 
-HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd}
+def pi_cmd(repo, task_text, transcript):
+    return [
+        "pi", "-p",
+        "--model", f"max/{MODEL}",
+        "--mode", "json",
+        "--no-context-files", "--no-extensions", "--no-mcp", "--no-session",
+        task_text,
+    ], {"PI_CODING_AGENT_DIR": os.path.join(ROOT, "bench", "pi-agent")}
+
+
+def dsh_cmd(repo, task_text, transcript):
+    return [
+        "dsh", "--profile", "headless",
+        "--patch", os.path.join(ROOT, "bench", "dsh-max.patch.yml"),
+        "--json",
+        task_text,
+    ], {
+        "DSH_MAX_API_KEY": "dummy",
+        "DSH_HOME": os.path.join(ROOT, "bench", "dsh-home"),
+    }
+
+
+HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd, "pi": pi_cmd, "dsh": dsh_cmd}
 
 
 def run_harness(name, repo, task_text, transcript_path):
@@ -121,6 +146,55 @@ def stats_for(name, log):
             "requests": len(toks) or None,
             "commands": len(re.findall(r"^\s*/?run\b|Running ", log, re.M)) or None,
             "prompt_tokens": int(toks[-1].replace(",", "")) if toks else None,
+        }
+    if name == "pi":
+        events = []
+        for line in log.splitlines():
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                pass
+        usage = [
+            e["usage"] for e in events
+            if e.get("type") == "message_update" and isinstance(e.get("usage"), dict)
+        ]
+        return {
+            "requests": sum(
+                1 for e in events
+                if e.get("type") == "message_start"
+                and e.get("message", {}).get("role") == "assistant"
+            ) or None,
+            "commands": sum(
+                1 for e in events
+                if e.get("type") == "tool_execution_start"
+                and e.get("toolName") in ("bash", "run")
+            ) or None,
+            "prompt_tokens": (usage[-1]["input"] + usage[-1].get("cacheRead", 0))
+            if usage else None,
+        }
+    if name == "dsh":
+        events = []
+        for line in log.splitlines():
+            try:
+                events.append(json.loads(line))
+            except ValueError:
+                pass
+        steps = [
+            e for e in events
+            if e.get("type") == "status" and e.get("phase") == "step_end"
+        ]
+        usage = [e["usage"] for e in steps if isinstance(e.get("usage"), dict)]
+        return {
+            "requests": len(steps) or None,
+            "commands": sum(
+                1 for e in events
+                if (e.get("type") in ("tool_call", "tool_start")
+                    or e.get("phase") == "tool_start")
+                and "bash" in str(e.get("name") or e.get("toolName") or e.get("tool") or "")
+            ) or None,
+            "prompt_tokens": (
+                usage[-1]["inputTokens"] + usage[-1].get("cacheReadTokens", 0)
+            ) if usage else None,
         }
     out = {}
     for key in ("requests", "commands", "prompt_tokens"):
