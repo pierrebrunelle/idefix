@@ -81,7 +81,7 @@ def main():
     # overall rows per client
     lines = ["# Benchmark results", ""]
     lines.append(f"Model: `{os.environ.get('MAX_MODEL', 'Qwen/Qwen3-1.7B')}` on MAX (CPU, float32). "
-                 f"{len(rows)} runs: {len(tasks)} tasks x {len(rows) // (len(tasks) * len(clients))} reps x {len(clients)} clients.")
+                 f"{len(rows)} runs across {len(tasks)} tasks x {len(clients)} clients.")
     lines.append("")
     lines.append("## Pass rate")
     lines.append("")
@@ -91,7 +91,9 @@ def main():
         lines.append(f"| {t} | {pass_pct.get((t,'mojo'),'-')}% | {pass_pct.get((t,'ref'),'-')}% |")
     mp = [r for r in rows if r["client"] == "mojo"]
     rp = [r for r in rows if r["client"] == "ref"]
-    lines.append(f"| **overall** | **{round(100*sum(x['pass'] for x in mp)/len(mp))}%** | **{round(100*sum(x['pass'] for x in rp)/len(rp))}%** |")
+    def pct(rs):
+        return round(100 * sum(x["pass"] for x in rs) / len(rs)) if rs else "-"
+    lines.append(f"| **overall** | **{pct(mp)}%** | **{pct(rp)}%** |")
     lines.append("")
     lines.append("![pass rate](charts/pass_rate.svg)")
     lines.append("")
@@ -102,7 +104,7 @@ def main():
     for label, key in (("wall_s", "wall_s"), ("peak RSS MB", "maxrss_mb"), ("prompt tokens", "prompt_tokens"), ("requests", "requests"), ("commands", "commands")):
         a = median([x[key] for x in mp])
         b = median([x[key] for x in rp])
-        lines.append(f"| {label} | {a} | {b} |")
+        lines.append(f"| {label} | {a if a is not None else '-'} | {b if b is not None else '-'} |")
     lines.append("")
     lines.append("![wall](charts/wall_time.svg) ![rss](charts/peak_rss.svg) ![tokens](charts/prompt_tokens.svg)")
     lines.append("")

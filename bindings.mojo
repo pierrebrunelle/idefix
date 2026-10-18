@@ -85,7 +85,7 @@ def http_post(url: String, body: String, bearer: String) raises -> Tuple[Int, St
         h, c_int(CURLOPT_HTTPHEADER), slist
     )
     _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
-        h, c_int(CURLOPT_TIMEOUT_MS), c_long(120000)
+        h, c_int(CURLOPT_TIMEOUT_MS), c_long(600000)
     )
     _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
         h, c_int(CURLOPT_MAXFILESIZE_LARGE), c_long(64 * 1024 * 1024)

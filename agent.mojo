@@ -280,7 +280,9 @@ def main() raises:
                         result = '{"error":"arguments are not valid JSON"}'
                     else:
                         var cmd = bindings.cjson_str(bindings.cjson_get(aj, "command"))
-                        if cmd == "":
+                        if bindings.now_seconds() > deadline:
+                            result = '{"error":"time budget expired; not executed"}'
+                        elif cmd == "":
                             result = '{"error":"missing or empty command"}'
                         else:
                             commands += 1
