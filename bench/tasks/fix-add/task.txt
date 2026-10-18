@@ -1,0 +1,1 @@
+In this repo, calc.py has a bug: add() subtracts instead of adding. Use bash to fix the file, then run 'python3 test_calc.py' to verify it prints TEST PASSED. Keep using the bash tool until the test passes, then report.

@@ -87,12 +87,17 @@ make test       # stub-server trouble-path suite
 
 ```bash
 # with `max serve` running a tool-capable model:
-bash bench/bench.sh 3
+MAX_MODEL=Qwen/Qwen3-1.7B python3 bench/run_matrix.py 2
+python3 bench/analyze.py
 ```
 
-Each run copies `bench/fixture/` to a temp repo, runs the task, and records
-pass/fail, requests, commands, prompt tokens, and wall time for both the Mojo
-agent and `tests/ref_client.py` (identical protocol, stdlib Python).
+`bench/tasks/` holds six SWE-style tasks (issue text -> edit -> independent
+`verify.sh`), graded from a one-line fix to a cross-module defect. The runner
+clones each task repo into a temp dir, runs each client with a watchdog
+timeout, and records pass, requests, commands, prompt tokens, wall time, and
+peak RSS (via `wait4` rusage) into `bench/results.jsonl`. `analyze.py` writes
+`bench/RESULTS.md` and SVG charts to `bench/charts/`. The comparison client is
+`tests/ref_client.py`: identical protocol, stdlib Python.
 
 ## Verified end to end
 
@@ -104,13 +109,11 @@ agent and `tests/ref_client.py` (identical protocol, stdlib Python).
 
 ## Benchmark findings
 
-`bench/results.tsv` records 4 runs (2 per client) on `bench/fixture/` at
-temperature 0.6. Task success at this model size is sampling-bound, not
-client-bound: the identical Python loop and the Mojo agent produce the same
-outcome distribution (the reference client passed one of two runs; the Mojo
-agent's verified pass is the transcripted run above). Agent CPU time per run
-is ~0.01 s; all wall time is model inference. A larger model or a server-side
-tool parser would raise the pass rate without changing the client.
+See `bench/RESULTS.md`. Headline: task success at 1.7B is sampling-bound, not
+client-bound — the identical Python loop and the Mojo agent produce the same
+outcome distribution. Agent CPU time per run is ~0.01 s; all wall time is
+model inference. A larger model or a server-side tool parser raises the pass
+rate without changing the client.
 
 ## Limits of this version
 

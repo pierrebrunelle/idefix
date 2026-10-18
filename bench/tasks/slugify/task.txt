@@ -1,0 +1,1 @@
+In this repo, slug.py's slugify fails on punctuation, repeated spaces, and leading/trailing whitespace. It should produce lowercase hyphen-separated slugs with no empty segments. Run 'python3 test_slug.py', fix slugify, and verify TEST PASSED. Keep going until it passes, then report.
