@@ -53,7 +53,9 @@ def json_quote(s: String) -> String:
     return out + '"'
 
 
-def http_post(url: String, body: String, bearer: String) raises -> Tuple[Int, String]:
+def http_post(
+    url: String, body: String, bearer: String, timeout_ms: Int = 600000
+) raises -> Tuple[Int, String]:
     var u = url
     var b = body
     var h = external_call["curl_easy_init", raw_ptr]()
@@ -85,7 +87,7 @@ def http_post(url: String, body: String, bearer: String) raises -> Tuple[Int, St
         h, c_int(CURLOPT_HTTPHEADER), slist
     )
     _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
-        h, c_int(CURLOPT_TIMEOUT_MS), c_long(600000)
+        h, c_int(CURLOPT_TIMEOUT_MS), c_long(timeout_ms)
     )
     _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
         h, c_int(CURLOPT_MAXFILESIZE_LARGE), c_long(64 * 1024 * 1024)

@@ -182,6 +182,10 @@ def main() raises:
     var requests = 0
     var i = 0
     while i < cfg.max_requests:
+        if bindings.now_seconds() > deadline:
+            bindings.eprint("[agent] --max-seconds exceeded")
+            exit_code = 2
+            break
         var temp = String("")
         if cfg.has_temperature:
             temp = ',"temperature":' + String(cfg.temperature)
@@ -196,14 +200,20 @@ def main() raises:
             + history
             + "]}"
         )
-        var r = bindings.http_post(cfg.base_url + "/chat/completions", body, cfg.bearer)
+        var req_ms = (deadline - bindings.now_seconds()) * 1000
+        var r = bindings.http_post(
+            cfg.base_url + "/chat/completions", body, cfg.bearer, req_ms
+        )
         requests += 1
         var code = r[0]
         var resp = r[1]
         vlog(cfg, "request " + String(requests) + " -> http " + String(code))
         if code == 0:
             # transport error: one retry
-            r = bindings.http_post(cfg.base_url + "/chat/completions", body, cfg.bearer)
+            req_ms = (deadline - bindings.now_seconds()) * 1000
+            r = bindings.http_post(
+                cfg.base_url + "/chat/completions", body, cfg.bearer, req_ms
+            )
             code = r[0]
             resp = r[1]
         if code != 200:
