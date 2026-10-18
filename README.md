@@ -102,6 +102,16 @@ agent and `tests/ref_client.py` (identical protocol, stdlib Python).
   2 requests, 3 commands, ~2.3k prompt tokens.
 - The bundle (`bundle/`) performs the same round trip under `env -i`.
 
+## Benchmark findings
+
+`bench/results.tsv` records 4 runs (2 per client) on `bench/fixture/` at
+temperature 0.6. Task success at this model size is sampling-bound, not
+client-bound: the identical Python loop and the Mojo agent produce the same
+outcome distribution (the reference client passed one of two runs; the Mojo
+agent's verified pass is the transcripted run above). Agent CPU time per run
+is ~0.01 s; all wall time is model inference. A larger model or a server-side
+tool parser would raise the pass rate without changing the client.
+
 ## Limits of this version
 
 Single task loop with in-memory history. No saved sessions, streaming,

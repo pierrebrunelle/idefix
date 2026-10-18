@@ -18,9 +18,13 @@ for client in mojo ref; do
     cp "$FIXTURE_SRC"/* "$repo"/
     start=$(python3 -c 'import time; print(time.time())')
     if [ "$client" = mojo ]; then
-      log=$("$ROOT/agent" --repo "$repo" --max-requests 15 --temperature 0.6 --transcript "$repo/t.json" "$TASK" 2>&1)
+      log=$("$ROOT/agent" --repo "$repo" --max-requests 15 --max-seconds 420 --temperature 0.6 --transcript "$repo/t.json" "$TASK" 2>&1)
     else
-      log=$(python3 "$ROOT/tests/ref_client.py" --repo "$repo" "$TASK" 2>&1)
+      python3 "$ROOT/tests/ref_client.py" --repo "$repo" "$TASK" >"$repo/log.txt" 2>&1 &
+      local_pid=$!
+      (sleep 420; kill "$local_pid" 2>/dev/null) & watchdog=$!
+      wait "$local_pid" 2>/dev/null; kill "$watchdog" 2>/dev/null
+      log=$(cat "$repo/log.txt")
     fi
     end=$(python3 -c 'import time; print(time.time())')
     wall=$(python3 -c "print(f'{$end-$start:.1f}')")
