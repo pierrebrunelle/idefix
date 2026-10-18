@@ -1,0 +1,6 @@
+agent
+bundle/
+libagent_c.a
+*.o
+__pycache__/
+.DS_Store
