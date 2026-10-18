@@ -96,13 +96,20 @@ MAX_MODEL=Qwen/Qwen3-4B-Instruct-2507 python3 bench/run_matrix.py 2
 python3 bench/analyze.py
 ```
 
-`bench/tasks/` holds six SWE-style tasks (issue text -> edit -> independent
-`verify.sh`), graded from a one-line fix to a cross-module defect. The runner
+`bench/tasks/` holds fourteen SWE-style tasks (issue text -> edit ->
+independent `verify.sh`), graded from a one-line fix to chained defects,
+CLI-arg handling, a performance bound, and a test-tamper trap. The runner
 clones each task repo into a temp dir, runs each client with a watchdog
 timeout, and records pass, requests, commands, prompt tokens, wall time, and
 peak RSS (via `wait4` rusage) into `bench/results.jsonl`. `analyze.py` writes
-`bench/RESULTS.md` and SVG charts to `bench/charts/`. The comparison client is
-`tests/ref_client.py`: identical protocol, stdlib Python.
+`bench/RESULTS.md` and per-model SVG charts to `bench/charts/<model>/`.
+Comparison clients: `tests/ref_client.py` (identical protocol, stdlib
+Python), aider, pi, and deepseek-harness (`dsh`). pi and dsh speak native
+OpenAI tool calling, which this MAX build cannot parse, so they route through
+`bench/toolcall_proxy.py` (:8001). On hybrid-thinking models the proxy also
+injects `chat_template_kwargs` (e.g. `enable_thinking=false`); mojo/ref/aider
+use a no-rewrite variant on :8002 since mojo parses `<tool_call>` text
+natively.
 
 ## Verified end to end
 
@@ -114,14 +121,17 @@ peak RSS (via `wait4` rusage) into `bench/results.jsonl`. `analyze.py` writes
 
 ## Benchmark findings
 
-Full data in `bench/RESULTS.md` — 36 runs: 6 SWE-style tasks x 2 reps x 3
-harnesses on `Qwen3-4B-Instruct-2507` (MAX, GPU).
+Full data in `bench/RESULTS.md` — 60 runs: 6 SWE-style tasks x 2 reps x 5
+harnesses on `Qwen3-4B-Instruct-2507` (MAX, GPU), plus a second board on
+`Qwen3-14B`.
 
 | harness | pass rate | median wall | peak RSS |
 | --- | --- | --- | --- |
 | aider | 12/12 (100%) | 23.1 s | 250 MB |
 | **mojo-max-agent** | **9/12 (75%)** | **24.5 s** | **15.8 MB** |
 | python-loop (ref_client.py) | 8/12 (67%) | 31.5 s | 18.0 MB |
+| pi | 7/12 (58%) | 79.8 s | 126 MB |
+| deepseek-harness | 0/12 (0%) | 420.3 s | 192 MB |
 
 How to read it:
 
@@ -134,6 +144,12 @@ How to read it:
 - mojo and python-loop are protocol-identical, so their pass-rate delta is
   sampling noise; the real deltas are RSS (15.8 vs 18.0 MB), startup, and
   deployed size.
+- pi completes real tool-call loops through the proxy but pays ~3x wall and
+  ~8x RSS versus mojo; its failures are mostly generation loops, not harness
+  errors.
+- deepseek-harness scored 0% because Qwen3-4B emits refusal text, not tool
+  calls, under its ~6k-token plugin system prompt — a model x harness
+  interaction, not a verdict on dsh with larger models.
 - Agent CPU per run is ~0.01 s; all wall time is model inference. Serving
   config dominates correctness (4B/GPU >> 1.7B/CPU on the same suite).
 
