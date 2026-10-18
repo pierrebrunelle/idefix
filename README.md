@@ -114,16 +114,28 @@ peak RSS (via `wait4` rusage) into `bench/results.jsonl`. `analyze.py` writes
 
 ## Benchmark findings
 
-Full data in `bench/RESULTS.md` (24 runs, Qwen3-4B on GPU). Headline:
+Full data in `bench/RESULTS.md` — 36 runs: 6 SWE-style tasks x 2 reps x 3
+harnesses on `Qwen3-4B-Instruct-2507` (MAX, GPU).
 
-- Pass rate: mojo 75% (9/12), ref 67% (8/12) — identical protocol, identical
-  outcome distribution; the four easy tasks pass 100% on both clients, the
-  hardest fails both.
-- Peak RSS: 15.8 MB (mojo) vs 18.0 MB (ref) — ~12% lighter on every run.
-- Median wall: 24.5 s vs 31.5 s — all wall time is model inference; the
-  client adds ~0.01 s of CPU.
-- A smaller model (Qwen3-1.7B fp32 CPU) passes the same suite far less often;
-  serving config dominates correctness, the client dominates footprint.
+| harness | pass rate | median wall | peak RSS |
+| --- | --- | --- | --- |
+| aider | 12/12 (100%) | 23.1 s | 250 MB |
+| **mojo-max-agent** | **9/12 (75%)** | **24.5 s** | **15.8 MB** |
+| python-loop (ref_client.py) | 8/12 (67%) | 31.5 s | 18.0 MB |
+
+How to read it:
+
+- aider wins on pass rate because it is a different harness class: one
+  request, whole-file edits, files pre-staged in context. It cannot run
+  tests or recover from failed commands in this configuration — the loop
+  harnesses can. On single-file fix tasks its format is simply advantaged.
+- mojo-max-agent matches aider's wall time at ~6% of its peak memory and
+  ~3 MB on disk versus a Python interpreter + 108 packages.
+- mojo and python-loop are protocol-identical, so their pass-rate delta is
+  sampling noise; the real deltas are RSS (15.8 vs 18.0 MB), startup, and
+  deployed size.
+- Agent CPU per run is ~0.01 s; all wall time is model inference. Serving
+  config dominates correctness (4B/GPU >> 1.7B/CPU on the same suite).
 
 ## Limits of this version
 

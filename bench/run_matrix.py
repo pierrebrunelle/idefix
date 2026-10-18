@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Benchmark matrix: clients x tasks x reps -> results.jsonl + transcripts.
+"""Benchmark matrix: harnesses x tasks x reps -> results.jsonl + logs.
 
-Each run copies the task repo to a temp dir, runs the client with a
+Each run copies the task repo to a temp dir, runs the harness with a
 watchdog timeout, records pass/fail via the task's independent verify.sh,
 and captures the child process peak RSS via wait4 rusage.
 """
@@ -21,29 +21,61 @@ RESULTS = os.path.join(ROOT, "bench", "results.jsonl")
 LOGS = os.path.join(ROOT, "bench", "logs")
 TIMEOUT_S = int(os.environ.get("BENCH_TIMEOUT", "420"))
 AGENT_MAX_SECONDS = TIMEOUT_S - 20  # inner budget must fire before watchdog
+MODEL = os.environ.get("MAX_MODEL", "")
+BASE = os.environ.get("MAX_BASE_URL", "http://127.0.0.1:8000/v1")
 
 
-def run_client(client, repo, task_text, transcript_path):
-    if client == "mojo":
-        cmd = [
-            os.path.join(ROOT, "agent"),
-            "--repo", repo,
-            "--max-requests", "15",
-            "--max-seconds", str(AGENT_MAX_SECONDS),
-            "--temperature", "0.6",
-            "--transcript", transcript_path,
-            task_text,
-        ]
-    else:
-        cmd = [
-            sys.executable,
-            os.path.join(ROOT, "tests", "ref_client.py"),
-            "--repo", repo,
-            task_text,
-        ]
+def mojo_cmd(repo, task_text, transcript):
+    return [
+        os.path.join(ROOT, "agent"),
+        "--repo", repo,
+        "--max-requests", "15",
+        "--max-seconds", str(AGENT_MAX_SECONDS),
+        "--temperature", "0.6",
+        "--transcript", transcript,
+        task_text,
+    ], {}
+
+
+def ref_cmd(repo, task_text, transcript):
+    return [
+        sys.executable,
+        os.path.join(ROOT, "tests", "ref_client.py"),
+        "--repo", repo,
+        task_text,
+    ], {}
+
+
+def aider_cmd(repo, task_text, transcript):
+    # source files editable, test files read-only so the tests cannot be gamed
+    editable, readonly = [], []
+    for f in sorted(os.listdir(repo)):
+        p = os.path.join(repo, f)
+        if not os.path.isfile(p):
+            continue
+        (readonly if f.startswith("test_") else editable).append(p)
+    cmd = [
+        "uv", "tool", "run", "--python", "3.12", "--from", "aider-chat", "aider",
+        "--model", f"openai/{MODEL}",
+        "--openai-api-base", BASE,
+        "--yes", "--no-git", "--no-show-model-warnings", "--no-pretty",
+    ]
+    cmd += sum((["--file", f] for f in editable), [])
+    cmd += sum((["--read", f] for f in readonly), [])
+    cmd += ["--message", task_text]
+    return cmd, {"OPENAI_API_KEY": "dummy"}
+
+
+HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd}
+
+
+def run_harness(name, repo, task_text, transcript_path):
+    cmd, extra_env = HARNESS[name](repo, task_text, transcript_path)
+    env = dict(os.environ, **extra_env)
     start = time.time()
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=os.environ
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        env=env, cwd=repo,
     )
     chunks = []
 
@@ -82,25 +114,36 @@ def run_client(client, repo, task_text, transcript_path):
     }
 
 
-def stat(log, key):
-    m = re.findall(key + r"=(\d+)", log)
-    return int(m[-1]) if m else None
+def stats_for(name, log):
+    if name == "aider":
+        toks = re.findall(r"Tokens: ([\d,]+) sent", log)
+        return {
+            "requests": len(toks) or None,
+            "commands": len(re.findall(r"^\s*/?run\b|Running ", log, re.M)) or None,
+            "prompt_tokens": int(toks[-1].replace(",", "")) if toks else None,
+        }
+    out = {}
+    for key in ("requests", "commands", "prompt_tokens"):
+        m = re.findall(key + r"=(\d+)", log)
+        out[key] = int(m[-1]) if m else None
+    return out
 
 
 def main():
     reps = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+    harnesses = sys.argv[2].split(",") if len(sys.argv) > 2 else list(HARNESS)
     tasks = sorted(d for d in os.listdir(TASKS_DIR) if os.path.isdir(os.path.join(TASKS_DIR, d)))
     os.makedirs(LOGS, exist_ok=True)
     for task in tasks:
         tdir = os.path.join(TASKS_DIR, task)
         task_text = open(os.path.join(tdir, "task.txt")).read().strip()
         for rep in range(1, reps + 1):
-            for client in ("mojo", "ref"):
+            for client in harnesses:
                 repo = tempfile.mkdtemp(prefix=f"bench-{task}-")
                 shutil.copytree(os.path.join(tdir, "repo"), repo, dirs_exist_ok=True)
                 transcript = os.path.join(repo, "transcript.json")
                 print(f"[{client} {task} rep{rep}] running...", flush=True)
-                r = run_client(client, repo, task_text, transcript)
+                r = run_harness(client, repo, task_text, transcript)
                 vf = subprocess.run(
                     [os.path.join(tdir, "verify.sh"), repo],
                     capture_output=True,
@@ -109,11 +152,9 @@ def main():
                     "client": client,
                     "task": task,
                     "rep": rep,
-                    "model": os.environ.get("MAX_MODEL", ""),
+                    "model": MODEL,
                     "pass": vf.returncode == 0,
-                    "requests": stat(r["log"], "requests"),
-                    "commands": stat(r["log"], "commands"),
-                    "prompt_tokens": stat(r["log"], "prompt_tokens"),
+                    **stats_for(client, r["log"]),
                     "wall_s": r["wall_s"],
                     "maxrss_mb": r["maxrss_mb"],
                     "exit": r["exit"],

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Analyze bench/results.jsonl -> RESULTS.md + charts/*.svg (no dependencies)."""
 import json
-import math
 import os
+import random
 import statistics
 from collections import defaultdict
 
@@ -11,36 +11,116 @@ RESULTS = os.path.join(ROOT, "bench", "results.jsonl")
 CHARTS = os.path.join(ROOT, "bench", "charts")
 OUT_MD = os.path.join(ROOT, "bench", "RESULTS.md")
 
-COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a"}
-W, ROW_H, PAD_L, PAD_T = 720, 34, 130, 46
+COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa"}
+NAMES = {"mojo": "mojo-max-agent", "ref": "python-loop", "aider": "aider", "opencode": "opencode"}
+BG, FG, MUT, GRID = "#0d1117", "#e6edf3", "#8b949e", "#21262d"
+random.seed(7)
 
 
-def svg_grouped_bars(title, groups, series, data, ymax, unit=""):
-    """groups: x labels; series: [name]; data[(group,series)] = value or None."""
-    n_g, n_s = len(groups), len(series)
-    chart_h = PAD_T + n_g * (ROW_H + 10)
-    plot_w = W - PAD_L - 110
-    bar_h = ROW_H // n_s - 4
-    out = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{chart_h + 30}" font-family="ui-monospace,monospace" font-size="12">',
-        f'<rect width="{W}" height="{chart_h + 30}" fill="#0d1117"/>',
-        f'<text x="{PAD_L}" y="26" fill="#e6edf3" font-size="15" font-weight="bold">{title}</text>',
+def esc(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def svg_head(w, h, title):
+    return [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" font-family="ui-monospace,monospace" font-size="13">',
+        f'<rect width="{w}" height="{h}" fill="{BG}"/>',
+        f'<text x="24" y="30" fill="{FG}" font-size="16" font-weight="bold">{esc(title)}</text>',
     ]
+
+
+def chart_bars(title, data, unit, w=720, suffix=""):
+    """data: [(label, color, value, note)] horizontal bars."""
+    row_h, pad_t, pad_l, pad_r = 46, 56, 150, 150
+    h = pad_t + row_h * len(data) + 30
+    vmax = max(v for _, _, v, _ in data) or 1
+    plot_w = w - pad_l - pad_r
+    out = svg_head(w, h, title)
+    for i, (label, color, v, note) in enumerate(data):
+        y = pad_t + i * row_h
+        bw = max(2, plot_w * v / vmax)
+        out.append(f'<text x="{pad_l - 12}" y="{y + 24}" fill="{MUT}" text-anchor="end">{esc(label)}</text>')
+        out.append(f'<rect x="{pad_l}" y="{y + 4}" width="{bw:.0f}" height="26" rx="3" fill="{color}"/>')
+        out.append(f'<text x="{pad_l + bw + 10:.0f}" y="{y + 23}" fill="{FG}" font-weight="bold">{v:g}{unit}</text>')
+        if note:
+            out.append(f'<text x="{pad_l + bw + 10 + 8 * len(str(round(v))) + 30:.0f}" y="{y + 23}" fill="{MUT}">{esc(note)}</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def chart_strip(title, groups, w=760):
+    """Jittered per-run dots + median line per group. groups: [(label,color,[vals])]."""
+    row_h, pad_t, pad_l, pad_r = 64, 56, 150, 90
+    allv = [v for _, _, vs in groups for v in vs]
+    vmax = max(allv) if allv else 1
+    h = pad_t + row_h * len(groups) + 34
+    plot_w = w - pad_l - pad_r
+    out = svg_head(w, h, title)
+    for xfrac in range(0, 5):
+        x = pad_l + plot_w * xfrac / 4
+        out.append(f'<line x1="{x:.0f}" y1="{pad_t - 8}" x2="{x:.0f}" y2="{h - 30}" stroke="{GRID}"/>')
+        out.append(f'<text x="{x:.0f}" y="{h - 12}" fill="{MUT}" text-anchor="middle">{vmax * xfrac / 4:.0f}s</text>')
+    for i, (label, color, vs) in enumerate(groups):
+        yc = pad_t + i * row_h + row_h // 2
+        out.append(f'<text x="{pad_l - 12}" y="{yc + 4}" fill="{MUT}" text-anchor="end">{esc(label)}</text>')
+        for v in vs:
+            x = pad_l + plot_w * v / vmax
+            y = yc + random.uniform(-14, 14)
+            out.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="4" fill="{color}" fill-opacity="0.45"/>')
+        if vs:
+            m = statistics.median(vs)
+            x = pad_l + plot_w * m / vmax
+            out.append(f'<line x1="{x:.0f}" y1="{yc - 18}" x2="{x:.0f}" y2="{yc + 18}" stroke="{color}" stroke-width="3"/>')
+            out.append(f'<text x="{min(x + 8, w - 70):.0f}" y="{yc - 22}" fill="{color}" font-weight="bold">{m:.0f}s</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def chart_scatter(title, points, w=760, h=420):
+    """points: [(label, color, x=median wall, y=pass pct)]."""
+    pad_l, pad_b, pad_t, pad_r = 90, 50, 56, 40
+    xs = [p[2] for p in points]
+    vmax = max(xs) if xs else 1
+    out = svg_head(w, h, title)
+    for i in range(5):
+        x = pad_l + (w - pad_l - pad_r) * i / 4
+        out.append(f'<line x1="{x:.0f}" y1="{pad_t}" x2="{x:.0f}" y2="{h - pad_b}" stroke="{GRID}"/>')
+        out.append(f'<text x="{x:.0f}" y="{h - pad_b + 18}" fill="{MUT}" text-anchor="middle">{vmax * i / 4:.0f}s</text>')
+        y = pad_t + (h - pad_t - pad_b) * i / 4
+        out.append(f'<line x1="{pad_l}" y1="{y:.0f}" x2="{w - pad_r}" y2="{y:.0f}" stroke="{GRID}"/>')
+        out.append(f'<text x="{pad_l - 10}" y="{y + 4:.0f}" fill="{MUT}" text-anchor="end">{100 - 25 * i}%</text>')
+    for label, color, xv, yv in points:
+        x = pad_l + (w - pad_l - pad_r) * xv / vmax
+        y = pad_t + (h - pad_t - pad_b) * (1 - yv / 100)
+        out.append(f'<circle cx="{x:.0f}" cy="{y:.0f}" r="9" fill="{color}"/>')
+        out.append(f'<text x="{x + 14:.0f}" y="{y + 5:.0f}" fill="{FG}">{esc(label)}</text>')
+    out.append(f'<text x="{pad_l}" y="{h - 4}" fill="{MUT}">median wall time per task (s)  |  pass rate</text>')
+    out.append("</svg>")
+    return "\n".join(out)
+
+
+def chart_grouped(title, groups, series, data, ymax, unit="", w=760):
+    row_h, pad_t, pad_l, pad_r = 34, 56, 130, 110
+    n_s = len(series)
+    h = pad_t + len(groups) * (row_h + 10) + 30
+    plot_w = w - pad_l - pad_r
+    bar_h = row_h // n_s - 4
+    out = svg_head(w, h, title)
     for gi, g in enumerate(groups):
-        y0 = PAD_T + gi * (ROW_H + 10)
-        out.append(f'<text x="{PAD_L - 8}" y="{y0 + ROW_H // 2 + 4}" fill="#8b949e" text-anchor="end">{g}</text>')
+        y0 = pad_t + gi * (row_h + 10)
+        out.append(f'<text x="{pad_l - 8}" y="{y0 + row_h // 2 + 4}" fill="{MUT}" text-anchor="end">{esc(g)}</text>')
         for si, s in enumerate(series):
             v = data.get((g, s))
             y = y0 + si * (bar_h + 4) + 2
             if v is None:
                 continue
-            w = max(1, plot_w * (v / ymax))
-            out.append(f'<rect x="{PAD_L}" y="{y}" width="{w:.0f}" height="{bar_h}" rx="2" fill="{COLORS[s]}"/>')
-            out.append(f'<text x="{PAD_L + w + 6:.0f}" y="{y + bar_h - 2}" fill="#8b949e">{v:g}{unit}</text>')
-    lx = W - 96
+            bw = max(1, plot_w * v / ymax)
+            out.append(f'<rect x="{pad_l}" y="{y}" width="{bw:.0f}" height="{bar_h}" rx="2" fill="{COLORS.get(s, MUT)}"/>')
+            out.append(f'<text x="{pad_l + bw + 6:.0f}" y="{y + bar_h - 2}" fill="{MUT}">{v:g}{unit}</text>')
+    lx, ly = w - 200, 14
     for si, s in enumerate(series):
-        out.append(f'<rect x="{lx}" y="{12 + si * 16}" width="10" height="10" fill="{COLORS[s]}"/>')
-        out.append(f'<text x="{lx + 14}" y="{21 + si * 16}" fill="#8b949e">{s}</text>')
+        out.append(f'<rect x="{lx + si * 90}" y="{ly}" width="10" height="10" fill="{COLORS.get(s, MUT)}"/>')
+        out.append(f'<text x="{lx + si * 90 + 14}" y="{ly + 9}" fill="{MUT}" font-size="11">{esc(NAMES.get(s, s))}</text>')
     out.append("</svg>")
     return "\n".join(out)
 
@@ -53,76 +133,96 @@ def median(v):
 def main():
     rows = [json.loads(l) for l in open(RESULTS)]
     tasks = sorted({r["task"] for r in rows})
-    clients = ["mojo", "ref"]
+    order = ["mojo", "ref", "aider", "opencode"]
+    clients = [c for c in order if any(r["client"] == c for r in rows)]
     os.makedirs(CHARTS, exist_ok=True)
 
     by = defaultdict(list)
     for r in rows:
         by[(r["task"], r["client"])].append(r)
+    per = defaultdict(list)
+    for r in rows:
+        per[r["client"]].append(r)
 
-    # per-cell aggregates
     pass_pct, wall, rss, toks, reqs = {}, {}, {}, {}, {}
     for (task, c), rs in by.items():
         pass_pct[(task, c)] = round(100 * sum(x["pass"] for x in rs) / len(rs))
         wall[(task, c)] = median([x["wall_s"] for x in rs])
         rss[(task, c)] = median([x["maxrss_mb"] for x in rs])
         toks[(task, c)] = median([x["prompt_tokens"] for x in rs])
-        reqs[(task, c)] = median([x["requests"] for x in rs])
 
     def ymax(d):
         v = [x for x in d.values() if x is not None]
         return (max(v) if v else 1) * 1.1
-    svg = svg_grouped_bars("Pass rate by task (%)", tasks, clients, pass_pct, 100)
-    open(os.path.join(CHARTS, "pass_rate.svg"), "w").write(svg)
-    svg = svg_grouped_bars("Median wall time (s)", tasks, clients, wall, ymax(wall))
-    open(os.path.join(CHARTS, "wall_time.svg"), "w").write(svg)
-    svg = svg_grouped_bars("Median peak RSS (MB)", tasks, clients, rss, ymax(rss))
-    open(os.path.join(CHARTS, "peak_rss.svg"), "w").write(svg)
-    svg = svg_grouped_bars("Median prompt tokens", tasks, clients, toks, ymax(toks))
-    open(os.path.join(CHARTS, "prompt_tokens.svg"), "w").write(svg)
 
-    # overall rows per client
-    lines = ["# Benchmark results", ""]
+    # leaderboard charts
+    lb = sorted(clients, key=lambda c: -sum(x["pass"] for x in per[c]))
+    bars = [
+        (NAMES.get(c, c), COLORS.get(c, MUT),
+         round(100 * sum(x["pass"] for x in per[c]) / len(per[c])),
+         f"{sum(x['pass'] for x in per[c])}/{len(per[c])}")
+        for c in lb
+    ]
+    open(os.path.join(CHARTS, "leaderboard.svg"), "w").write(
+        chart_bars("Success rate by harness", bars, "%"))
+    wbars = [(NAMES.get(c, c), COLORS.get(c, MUT), median([x["wall_s"] for x in per[c]]) or 0, "")
+             for c in lb]
+    open(os.path.join(CHARTS, "median_time.svg"), "w").write(
+        chart_bars("Median time per task", wbars, "s"))
+    tbars = [(NAMES.get(c, c), COLORS.get(c, MUT), median([x["prompt_tokens"] for x in per[c] if x["pass"]]) or 0, "")
+             for c in lb]
+    open(os.path.join(CHARTS, "tokens_per_success.svg"), "w").write(
+        chart_bars("Median prompt tokens per success", tbars, ""))
+    open(os.path.join(CHARTS, "wall_strip.svg"), "w").write(
+        chart_strip("Wall-clock per run (dots = runs, bar = median)",
+                    [(NAMES.get(c, c), COLORS.get(c, MUT), [x["wall_s"] for x in per[c]]) for c in lb]))
+    pts = [(NAMES.get(c, c), COLORS.get(c, MUT), median([x["wall_s"] for x in per[c]]) or 0,
+            round(100 * sum(x["pass"] for x in per[c]) / len(per[c]))) for c in lb]
+    open(os.path.join(CHARTS, "pareto.svg"), "w").write(
+        chart_scatter("Pass rate vs speed (top-left is best)", pts))
+    open(os.path.join(CHARTS, "pass_rate.svg"), "w").write(
+        chart_grouped("Pass rate by task (%)", tasks, clients, pass_pct, 100))
+    open(os.path.join(CHARTS, "peak_rss.svg"), "w").write(
+        chart_grouped("Median peak RSS (MB)", tasks, clients, rss, ymax(rss)))
+
+    # RESULTS.md
     model = next((r.get("model") for r in rows if r.get("model")), "") or os.environ.get("MAX_MODEL", "")
-    lines.append(f"Model: `{model}` on MAX. "
-                 f"{len(rows)} runs across {len(tasks)} tasks x {len(clients)} clients.")
+    lines = ["# Benchmark results", ""]
+    lines.append(f"Model: `{model}` on MAX (local). {len(rows)} runs: {len(tasks)} tasks x "
+                 f"{len(rows) // (len(tasks) * len(clients))} reps x {len(clients)} harnesses.")
     lines.append("")
-    lines.append("## Pass rate")
+    lines.append("## Leaderboard")
     lines.append("")
-    lines.append("| task | mojo | ref |")
-    lines.append("| --- | --- | --- |")
+    lines.append("| harness | pass rate | median wall | peak RSS | median tokens |")
+    lines.append("| --- | --- | --- | --- | --- |")
+    for c in lb:
+        rs = per[c]
+        lines.append(
+            f"| {NAMES.get(c, c)} | {sum(x['pass'] for x in rs)}/{len(rs)} "
+            f"({round(100 * sum(x['pass'] for x in rs) / len(rs))}%) | "
+            f"{median([x['wall_s'] for x in rs])}s | {median([x['maxrss_mb'] for x in rs])} MB | "
+            f"{median([x['prompt_tokens'] for x in rs])} |"
+        )
+    lines += ["", "![leaderboard](charts/leaderboard.svg)", "",
+              "![time](charts/median_time.svg) ![strip](charts/wall_strip.svg)", "",
+              "![pareto](charts/pareto.svg) ![tokens](charts/tokens_per_success.svg)", "",
+              "## Pass rate by task", ""]
+    lines.append("| task | " + " | ".join(NAMES.get(c, c) for c in clients) + " |")
+    lines.append("| --- |" + " --- |" * len(clients))
     for t in tasks:
-        lines.append(f"| {t} | {pass_pct.get((t,'mojo'),'-')}% | {pass_pct.get((t,'ref'),'-')}% |")
-    mp = [r for r in rows if r["client"] == "mojo"]
-    rp = [r for r in rows if r["client"] == "ref"]
-    def pct(rs):
-        return round(100 * sum(x["pass"] for x in rs) / len(rs)) if rs else "-"
-    lines.append(f"| **overall** | **{pct(mp)}%** | **{pct(rp)}%** |")
-    lines.append("")
-    lines.append("![pass rate](charts/pass_rate.svg)")
-    lines.append("")
-    lines.append("## Cost per run (median)")
-    lines.append("")
-    lines.append("| metric | mojo | ref |")
-    lines.append("| --- | --- | --- |")
-    for label, key in (("wall_s", "wall_s"), ("peak RSS MB", "maxrss_mb"), ("prompt tokens", "prompt_tokens"), ("requests", "requests"), ("commands", "commands")):
-        a = median([x[key] for x in mp])
-        b = median([x[key] for x in rp])
-        lines.append(f"| {label} | {a if a is not None else '-'} | {b if b is not None else '-'} |")
-    lines.append("")
-    lines.append("![wall](charts/wall_time.svg) ![rss](charts/peak_rss.svg) ![tokens](charts/prompt_tokens.svg)")
-    lines.append("")
-    lines.append("## Raw runs")
-    lines.append("")
-    lines.append("| client | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
+        lines.append(f"| {t} | " + " | ".join(f"{pass_pct.get((t, c), '-')}%"
+                                              for c in clients) + " |")
+    lines += ["", "![pass rate](charts/pass_rate.svg) ![rss](charts/peak_rss.svg)", "",
+              "## Raw runs", ""]
+    lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in rows:
         lines.append(
-            f"| {r['client']} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
+            f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
             f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']} |"
         )
     open(OUT_MD, "w").write("\n".join(lines) + "\n")
-    print("\n".join(lines[:20]))
+    print("\n".join(lines[:18]))
 
 
 if __name__ == "__main__":

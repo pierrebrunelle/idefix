@@ -1,38 +1,52 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="720" height="340" font-family="ui-monospace,monospace" font-size="12">
-<rect width="720" height="340" fill="#0d1117"/>
-<text x="130" y="26" fill="#e6edf3" font-size="15" font-weight="bold">Pass rate by task (%)</text>
-<text x="122" y="67" fill="#8b949e" text-anchor="end">empty-input</text>
-<rect x="130" y="48" width="480" height="13" rx="2" fill="#4f8ff7"/>
-<text x="616" y="59" fill="#8b949e">100</text>
-<rect x="130" y="65" width="480" height="13" rx="2" fill="#9a9a9a"/>
-<text x="616" y="76" fill="#8b949e">100</text>
-<text x="122" y="111" fill="#8b949e" text-anchor="end">fix-add</text>
-<rect x="130" y="92" width="480" height="13" rx="2" fill="#4f8ff7"/>
-<text x="616" y="103" fill="#8b949e">100</text>
-<rect x="130" y="109" width="480" height="13" rx="2" fill="#9a9a9a"/>
-<text x="616" y="120" fill="#8b949e">100</text>
-<text x="122" y="155" fill="#8b949e" text-anchor="end">multi-file</text>
-<rect x="130" y="136" width="480" height="13" rx="2" fill="#4f8ff7"/>
-<text x="616" y="147" fill="#8b949e">100</text>
-<rect x="130" y="153" width="480" height="13" rx="2" fill="#9a9a9a"/>
-<text x="616" y="164" fill="#8b949e">100</text>
-<text x="122" y="199" fill="#8b949e" text-anchor="end">off-by-one</text>
-<rect x="130" y="180" width="480" height="13" rx="2" fill="#4f8ff7"/>
-<text x="616" y="191" fill="#8b949e">100</text>
-<rect x="130" y="197" width="480" height="13" rx="2" fill="#9a9a9a"/>
-<text x="616" y="208" fill="#8b949e">100</text>
-<text x="122" y="243" fill="#8b949e" text-anchor="end">parse-config</text>
-<rect x="130" y="224" width="1" height="13" rx="2" fill="#4f8ff7"/>
-<text x="137" y="235" fill="#8b949e">0</text>
-<rect x="130" y="241" width="1" height="13" rx="2" fill="#9a9a9a"/>
-<text x="137" y="252" fill="#8b949e">0</text>
-<text x="122" y="287" fill="#8b949e" text-anchor="end">slugify</text>
-<rect x="130" y="268" width="240" height="13" rx="2" fill="#4f8ff7"/>
-<text x="376" y="279" fill="#8b949e">50</text>
-<rect x="130" y="285" width="1" height="13" rx="2" fill="#9a9a9a"/>
-<text x="137" y="296" fill="#8b949e">0</text>
-<rect x="624" y="12" width="10" height="10" fill="#4f8ff7"/>
-<text x="638" y="21" fill="#8b949e">mojo</text>
-<rect x="624" y="28" width="10" height="10" fill="#9a9a9a"/>
-<text x="638" y="37" fill="#8b949e">ref</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="350" font-family="ui-monospace,monospace" font-size="13">
+<rect width="760" height="350" fill="#0d1117"/>
+<text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Pass rate by task (%)</text>
+<text x="122" y="77" fill="#8b949e" text-anchor="end">empty-input</text>
+<rect x="130" y="58" width="520" height="7" rx="2" fill="#4f8ff7"/>
+<text x="656" y="63" fill="#8b949e">100</text>
+<rect x="130" y="69" width="520" height="7" rx="2" fill="#9a9a9a"/>
+<text x="656" y="74" fill="#8b949e">100</text>
+<rect x="130" y="80" width="520" height="7" rx="2" fill="#f7a24f"/>
+<text x="656" y="85" fill="#8b949e">100</text>
+<text x="122" y="121" fill="#8b949e" text-anchor="end">fix-add</text>
+<rect x="130" y="102" width="520" height="7" rx="2" fill="#4f8ff7"/>
+<text x="656" y="107" fill="#8b949e">100</text>
+<rect x="130" y="113" width="520" height="7" rx="2" fill="#9a9a9a"/>
+<text x="656" y="118" fill="#8b949e">100</text>
+<rect x="130" y="124" width="520" height="7" rx="2" fill="#f7a24f"/>
+<text x="656" y="129" fill="#8b949e">100</text>
+<text x="122" y="165" fill="#8b949e" text-anchor="end">multi-file</text>
+<rect x="130" y="146" width="520" height="7" rx="2" fill="#4f8ff7"/>
+<text x="656" y="151" fill="#8b949e">100</text>
+<rect x="130" y="157" width="520" height="7" rx="2" fill="#9a9a9a"/>
+<text x="656" y="162" fill="#8b949e">100</text>
+<rect x="130" y="168" width="520" height="7" rx="2" fill="#f7a24f"/>
+<text x="656" y="173" fill="#8b949e">100</text>
+<text x="122" y="209" fill="#8b949e" text-anchor="end">off-by-one</text>
+<rect x="130" y="190" width="520" height="7" rx="2" fill="#4f8ff7"/>
+<text x="656" y="195" fill="#8b949e">100</text>
+<rect x="130" y="201" width="520" height="7" rx="2" fill="#9a9a9a"/>
+<text x="656" y="206" fill="#8b949e">100</text>
+<rect x="130" y="212" width="520" height="7" rx="2" fill="#f7a24f"/>
+<text x="656" y="217" fill="#8b949e">100</text>
+<text x="122" y="253" fill="#8b949e" text-anchor="end">parse-config</text>
+<rect x="130" y="234" width="1" height="7" rx="2" fill="#4f8ff7"/>
+<text x="137" y="239" fill="#8b949e">0</text>
+<rect x="130" y="245" width="1" height="7" rx="2" fill="#9a9a9a"/>
+<text x="137" y="250" fill="#8b949e">0</text>
+<rect x="130" y="256" width="520" height="7" rx="2" fill="#f7a24f"/>
+<text x="656" y="261" fill="#8b949e">100</text>
+<text x="122" y="297" fill="#8b949e" text-anchor="end">slugify</text>
+<rect x="130" y="278" width="260" height="7" rx="2" fill="#4f8ff7"/>
+<text x="396" y="283" fill="#8b949e">50</text>
+<rect x="130" y="289" width="1" height="7" rx="2" fill="#9a9a9a"/>
+<text x="137" y="294" fill="#8b949e">0</text>
+<rect x="130" y="300" width="520" height="7" rx="2" fill="#f7a24f"/>
+<text x="656" y="305" fill="#8b949e">100</text>
+<rect x="560" y="14" width="10" height="10" fill="#4f8ff7"/>
+<text x="574" y="23" fill="#8b949e" font-size="11">mojo-max-agent</text>
+<rect x="650" y="14" width="10" height="10" fill="#9a9a9a"/>
+<text x="664" y="23" fill="#8b949e" font-size="11">python-loop</text>
+<rect x="740" y="14" width="10" height="10" fill="#f7a24f"/>
+<text x="754" y="23" fill="#8b949e" font-size="11">aider</text>
 </svg>
