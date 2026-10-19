@@ -57,7 +57,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: agent --repo DIR [flags] TASK\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v"
+    return "usage: agent --repo DIR [flags] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n  REPL: shared context across lines; /reset clears, /quit or Ctrl-D exits"
 
 
 def read_file(path: String) raises -> String:
@@ -126,9 +126,9 @@ def parse_args() raises -> Config:
         else:
             positional.append(arg)
         i += 1
-    if len(positional) == 0:
-        die("missing TASK. " + usage(), 64)
-    cfg.task = positional[len(positional) - 1]
+    if len(positional) > 0:
+        cfg.task = positional[len(positional) - 1]
+    # no TASK -> REPL mode (validated after env checks)
     var env_base = getenv("MAX_BASE_URL")
     if env_base != "":
         cfg.base_url = env_base
@@ -161,25 +161,23 @@ def write_transcript(path: String, history: String):
         bindings.eprint("[agent] failed to write transcript: " + path)
 
 
-def main() raises:
-    _ = external_call["shim_install_signal_handlers", c_int]()
-    var cfg = parse_args()
-    var system = SYSTEM_PROMPT
-    if cfg.instructions != "":
-        system += "\n\nRepository instructions:\n" + cfg.instructions
-    var history = (
-        '{"role":"system","content":'
-        + bindings.json_quote(system)
-        + '},{"role":"user","content":'
-        + bindings.json_quote(cfg.task)
-        + '}'
-    )
+struct TurnStats(Copyable):
+    var requests: Int
+    var commands: Int
+    var prompt_tokens: Int
+
+    def __init__(out self):
+        self.requests = 0
+        self.commands = 0
+        self.prompt_tokens = 0
+
+
+def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tuple[String, Int]:
+    # One task: loop model calls + bash execution until the model answers
+    # with plain text or a budget trips. Returns (final_answer, exit_code).
     var deadline = bindings.now_seconds() + cfg.max_seconds
     var exit_code = 0
     var final = ""
-    var prompt_tokens = 0
-    var commands = 0
-    var requests = 0
     var i = 0
     while i < cfg.max_requests:
         if bindings.now_seconds() > deadline:
@@ -204,10 +202,10 @@ def main() raises:
         var r = bindings.http_post(
             cfg.base_url + "/chat/completions", body, cfg.bearer, max(req_ms, 1)
         )
-        requests += 1
+        st.requests += 1
         var code = r[0]
         var resp = r[1]
-        vlog(cfg, "request " + String(requests) + " -> http " + String(code))
+        vlog(cfg, "request " + String(st.requests) + " -> http " + String(code))
         if code == 0 and bindings.now_seconds() < deadline:
             # transport error: one retry
             req_ms = (deadline - bindings.now_seconds()) * 1000
@@ -231,7 +229,7 @@ def main() raises:
             break
         var usage_ = bindings.cjson_get(root, "usage")
         if usage_:
-            prompt_tokens = Int(bindings.cjson_num(bindings.cjson_get(usage_, "prompt_tokens")))
+            st.prompt_tokens = Int(bindings.cjson_num(bindings.cjson_get(usage_, "prompt_tokens")))
         var choices = bindings.cjson_get(root, "choices")
         if not choices or bindings.cjson_len(choices) == 0:
             bindings.eprint("[agent] response has no choices")
@@ -299,7 +297,7 @@ def main() raises:
                         elif cmd == "":
                             result = '{"error":"missing or empty command"}'
                         else:
-                            commands += 1
+                            st.commands += 1
                             vlog(cfg, "bash: " + cmd[byte= : min(cmd.byte_length(), 120)])
                             var rc = bindings.run_capture(
                                 cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms
@@ -345,21 +343,85 @@ def main() raises:
             bindings.eprint("[agent] --max-seconds exceeded")
             exit_code = 2
             break
-        if cfg.max_prompt_tokens > 0 and prompt_tokens > cfg.max_prompt_tokens:
+        if cfg.max_prompt_tokens > 0 and st.prompt_tokens > cfg.max_prompt_tokens:
             bindings.eprint("[agent] --max-prompt-tokens exceeded")
             exit_code = 2
             break
         i += 1
     else:
         exit_code = 2
-    if final == "" and exit_code == 0:
-        final = "(no final answer)"
+    return final, exit_code
+
+
+def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int):
     write_transcript(cfg.transcript, history)
     bindings.eprint(
-        "[agent] requests=" + String(requests)
-        + " commands=" + String(commands)
-        + " prompt_tokens=" + String(prompt_tokens)
-        + " exit=" + String(exit_code)
+        "[agent] requests=" + String(st.requests)
+        + " commands=" + String(st.commands)
+        + " prompt_tokens=" + String(st.prompt_tokens)
+        + " exit=" + String(code)
     )
-    print(final)
-    external_call["exit", c_int](c_int(exit_code))
+    if final != "":
+        print(final)
+    external_call["exit", c_int](c_int(code))
+
+
+def main() raises:
+    _ = external_call["shim_install_signal_handlers", c_int]()
+    var cfg = parse_args()
+    var system = SYSTEM_PROMPT
+    if cfg.instructions != "":
+        system += "\n\nRepository instructions:\n" + cfg.instructions
+    var sys_head = (
+        '{"role":"system","content":' + bindings.json_quote(system) + '}'
+    )
+    var history = sys_head
+    var st = TurnStats()
+    var exit_code = 0
+
+    if cfg.task != "":
+        history += ',{"role":"user","content":' + bindings.json_quote(cfg.task) + '}'
+        var r = run_turn(cfg, history, st)
+        var final = r[0]
+        exit_code = r[1]
+        if final == "" and exit_code == 0:
+            final = "(no final answer)"
+        if final != "" and exit_code == 0:
+            history += ',{"role":"assistant","content":' + bindings.json_quote(final) + '}'
+        finish(cfg, history, st, final, exit_code)
+        return
+
+    # REPL: one shared session; each stdin line is a task in context.
+    var tty = bindings.is_tty()
+    if tty:
+        bindings.eprint("[agent] interactive mode — /reset clears context, /quit or Ctrl-D exits")
+    while True:
+        if tty:
+            bindings.prompt("mojo> ")
+        var line = String("")
+        try:
+            line = bindings.read_line()
+        except:
+            break
+        var t = String(line.strip())
+        if t == "":
+            continue
+        if t == "/quit" or t == "/exit":
+            break
+        if t == "/reset":
+            history = sys_head
+            bindings.eprint("[agent] context reset")
+            continue
+        history += ',{"role":"user","content":' + bindings.json_quote(t) + '}'
+        var r = run_turn(cfg, history, st)
+        var final = r[0]
+        var code = r[1]
+        if final == "":
+            final = "(no final answer)"
+        elif code == 0:
+            history += ',{"role":"assistant","content":' + bindings.json_quote(final) + '}'
+        print(final)
+        if code != 0:
+            bindings.eprint("[agent] turn ended with exit " + String(code))
+        exit_code = code
+    finish(cfg, history, st, "", exit_code)

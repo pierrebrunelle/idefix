@@ -1,4 +1,5 @@
 #include <signal.h>
+#include <stdio.h>
 #include <unistd.h>
 
 /* Forwards SIGINT/SIGTERM to the tracked child process group, then
@@ -20,3 +21,14 @@ void shim_install_signal_handlers(void) {
 }
 
 void shim_track_pgid(int pgid) { g_pgid = pgid; }
+
+/* REPL input: returns one NUL-terminated line (newline stripped) from stdin,
+   NULL at EOF. Static buffer — valid until the next call, never freed. */
+char *shim_read_line(void) {
+    static char *line = NULL;
+    static size_t cap = 0;
+    ssize_t n = getline(&line, &cap, stdin);
+    if (n <= 0) return NULL;
+    if (line[n - 1] == '\n') line[n - 1] = 0;
+    return line;
+}

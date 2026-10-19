@@ -57,11 +57,18 @@ check "budget exit" 2 "$rc"
 # 7. transcript written
 rm -f /tmp/agent_t.json
 run_mode normal ./agent --repo . --transcript /tmp/agent_t.json "task" >/dev/null 2>&1
-python3 -c "import json;d=json.load(open('/tmp/agent_t.json'));assert [m['role'] for m in d]==['system','user','assistant','tool'],d" && echo "PASS transcript" || { echo "FAIL transcript"; FAIL=1; }
+python3 -c "import json;d=json.load(open('/tmp/agent_t.json'));assert [m['role'] for m in d]==['system','user','assistant','tool','assistant'],d" && echo "PASS transcript" || { echo "FAIL transcript"; FAIL=1; }
 
 # 8. --help exits cleanly
 out=$(./agent --help 2>&1); rc=$?
 check "help rc" 0 "$rc"
 echo "$out" | grep -q "usage: agent" && echo "PASS help text" || { echo "FAIL help text"; FAIL=1; }
+
+# 9. REPL: piped lines share one session; /quit exits clean; EOF-clean exit
+out=$(printf 'one\ntwo\n/quit\n' | run_mode normal ./agent --repo . 2>/dev/null); rc=$?
+check "repl exit" 0 "$rc"
+check "repl two turns" $'Done.\nDone.' "$out"
+out=$(./agent </dev/null 2>&1); rc=$?
+check "repl EOF exit" 0 "$rc"
 
 exit $FAIL

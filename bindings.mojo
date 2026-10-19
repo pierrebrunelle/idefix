@@ -245,6 +245,26 @@ def now_seconds() -> Int:
     return Int(external_call["time", c_long](raw_ptr()))
 
 
+def is_tty() -> Bool:
+    return external_call["isatty", c_int](c_int(0)) != 0
+
+
+def prompt(s: String):
+    var t = s
+    var fmt = "%s"
+    _ = external_call["dprintf", c_int, num_fixed_args=2](
+        c_int(2), fmt.as_c_string_span().ptr(), t.as_c_string_span().ptr()
+    )
+
+
+def read_line() raises -> String:
+    # "" on EOF; caller distinguishes EOF vs empty line via the Bool flag.
+    var p = external_call["shim_read_line", cstr_ptr]()
+    if not p:
+        raise Error("eof")
+    return String(unsafe_from_utf8_ptr=p.value())
+
+
 def write_file(path: String, contents: String) -> Bool:
     var p = path
     var c = contents

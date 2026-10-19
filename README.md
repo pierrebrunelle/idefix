@@ -30,6 +30,15 @@ MAX_MODEL=Qwen/Qwen3-1.7B ./agent --repo ./project \
   "Fix the parser bug and run its tests"
 ```
 
+No TASK → interactive REPL on stdin with one shared session (follow-ups see
+prior context). `/reset` clears history, `/quit` or Ctrl-D exits, and piped
+stdin runs one task per line:
+
+```bash
+./agent --repo ./project            # interactive
+printf 'fix the parser\nupdate its tests\n' | ./agent --repo ./project
+```
+
 Configuration:
 
 | Knob | Source | Default |
@@ -66,9 +75,9 @@ invoking user's permissions; use an isolated checkout when isolation matters.
 
 ## Layout
 
-- `agent.mojo` - CLI, configuration, task loop
+- `agent.mojo` - CLI, configuration, task loop, REPL
 - `bindings.mojo` - libcurl/cJSON FFI and POSIX exec with bounded capture
-- `agent_shim.c` - signal handling and process-group tracking
+- `agent_shim.c` - signal handling, process-group tracking, stdin readline
 - `vendor/cJSON.{c,h}` - vendored JSON parser, statically linked
 - `tests/` - stub server, test suite (`tests/run.sh`), Python reference client
 - `bench/` - fixture and harness comparing the Mojo agent to the reference
@@ -82,6 +91,12 @@ compiler for the shim and cJSON.
 make            # cc: vendor/cJSON.o + agent_shim.o -> libagent_c.a, mojo build
 make test       # stub-server trouble-path suite
 ```
+
+Linux x86_64: the code is POSIX-only (fork/execv/poll/waitpid, getline,
+signal shims) — `make` works with pixi-installed Mojo and
+`apt install libcurl4-openssl-dev` (or the pixi curl). The macOS `bundle`
+target uses `otool`/`install_name_tool`; on Linux ship the runtime `.so`
+set beside the binary with `rpath $ORIGIN` instead.
 
 ## Benchmark
 
