@@ -155,17 +155,17 @@ def median(v):
     return round(statistics.median(v), 1) if v else None
 
 
-def emit_board(valid, rows, model, cdir, cpre, n_infra):
-    tasks = sorted({r["task"] for r in valid})
+def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
+    tasks = sorted({r["task"] for r in valid_rows})
     order = ["mojo", "ref", "aider", "pi", "dsh", "opencode"]
-    clients = [c for c in order if any(r["client"] == c for r in rows)]
+    clients = [c for c in order if any(r["client"] == c for r in all_rows)]
     os.makedirs(cdir, exist_ok=True)
 
     by = defaultdict(list)
-    for r in valid:
+    for r in valid_rows:
         by[(r["task"], r["client"])].append(r)
     per = defaultdict(list)
-    for r in valid:
+    for r in valid_rows:
         per[r["client"]].append(r)
 
     pass_pct, wall, rss, toks, reqs = {}, {}, {}, {}, {}
@@ -211,8 +211,8 @@ def emit_board(valid, rows, model, cdir, cpre, n_infra):
 
     lines = [f"## `{model}`",
              ""]
-    lines.append(f"{len(valid)} valid runs ({len(rows)} total): {len(tasks)} tasks x "
-                 f"{len(rows) // (len(tasks) * len(clients))} reps x {len(clients)} harnesses.")
+    lines.append(f"{len(valid_rows)} valid runs ({len(all_rows)} total): {len(tasks)} tasks x "
+                 f"{max(r['rep'] for r in all_rows)} reps x {len(clients)} harnesses.")
     if n_infra:
         lines.append(f"**{n_infra} runs excluded: their logs end on a transport/"
                      f"endpoint error (server outage), not a task outcome.**")
@@ -258,7 +258,7 @@ def emit_board(valid, rows, model, cdir, cpre, n_infra):
               "### Raw runs", ""]
     lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
-    for r in rows:
+    for r in all_rows:
         infra = " infra" if r.get("infra") else ""
         lines.append(
             f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "

@@ -1,0 +1,2 @@
+[agent] http 500: Internal Server Error
+[agent] requests=1 commands=0 prompt_tokens=0 exit=3

@@ -1,0 +1,9 @@
+Warning: Input is not a terminal (fd=0).
+
+Aider v0.86.2
+Model: openai/Qwen/Qwen3-14B with whole edit format
+Git repo: none
+Repo-map: disabled
+Added report.py to the chat.
+Added test_report.py to the chat (read-only).
+

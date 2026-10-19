@@ -245,11 +245,12 @@ def now_seconds() -> Int:
     return Int(external_call["time", c_long](raw_ptr()))
 
 
-def is_tty() -> Bool:
+def stdin_is_tty() -> Bool:
     return external_call["isatty", c_int](c_int(0)) != 0
 
 
 def prompt(s: String):
+    # fd 2: stderr keeps stdout pipeable for piped consumers.
     var t = s
     var fmt = "%s"
     _ = external_call["dprintf", c_int, num_fixed_args=2](

@@ -93,7 +93,7 @@ make test       # stub-server trouble-path suite
 ```
 
 Linux x86_64: the code is POSIX-only (fork/execv/poll/waitpid, getline,
-signal shims) — `make` works with pixi-installed Mojo and
+signal shims); `make` works with pixi-installed Mojo and
 `apt install libcurl4-openssl-dev` (or the pixi curl). The macOS `bundle`
 target uses `otool`/`install_name_tool`; on Linux ship the runtime `.so`
 set beside the binary with `rpath $ORIGIN` instead.

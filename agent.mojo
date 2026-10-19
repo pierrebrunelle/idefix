@@ -57,7 +57,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: agent --repo DIR [flags] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n  REPL: shared context across lines; /reset clears, /quit or Ctrl-D exits"
+    return "usage: agent --repo DIR [flags] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits"
 
 
 def read_file(path: String) raises -> String:
@@ -164,12 +164,12 @@ def write_transcript(path: String, history: String):
 struct TurnStats(Copyable):
     var requests: Int
     var commands: Int
-    var prompt_tokens: Int
+    var last_prompt_tokens: Int
 
     def __init__(out self):
         self.requests = 0
         self.commands = 0
-        self.prompt_tokens = 0
+        self.last_prompt_tokens = 0
 
 
 def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tuple[String, Int]:
@@ -229,7 +229,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             break
         var usage_ = bindings.cjson_get(root, "usage")
         if usage_:
-            st.prompt_tokens = Int(bindings.cjson_num(bindings.cjson_get(usage_, "prompt_tokens")))
+            st.last_prompt_tokens = Int(bindings.cjson_num(bindings.cjson_get(usage_, "prompt_tokens")))
         var choices = bindings.cjson_get(root, "choices")
         if not choices or bindings.cjson_len(choices) == 0:
             bindings.eprint("[agent] response has no choices")
@@ -343,7 +343,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             bindings.eprint("[agent] --max-seconds exceeded")
             exit_code = 2
             break
-        if cfg.max_prompt_tokens > 0 and st.prompt_tokens > cfg.max_prompt_tokens:
+        if cfg.max_prompt_tokens > 0 and st.last_prompt_tokens > cfg.max_prompt_tokens:
             bindings.eprint("[agent] --max-prompt-tokens exceeded")
             exit_code = 2
             break
@@ -358,7 +358,7 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
     bindings.eprint(
         "[agent] requests=" + String(st.requests)
         + " commands=" + String(st.commands)
-        + " prompt_tokens=" + String(st.prompt_tokens)
+        + " prompt_tokens=" + String(st.last_prompt_tokens)
         + " exit=" + String(code)
     )
     if final != "":
@@ -372,36 +372,36 @@ def main() raises:
     var system = SYSTEM_PROMPT
     if cfg.instructions != "":
         system += "\n\nRepository instructions:\n" + cfg.instructions
-    var sys_head = (
+    var initial_history = (
         '{"role":"system","content":' + bindings.json_quote(system) + '}'
     )
-    var history = sys_head
+    var history = initial_history
     var st = TurnStats()
     var exit_code = 0
 
     if cfg.task != "":
         history += ',{"role":"user","content":' + bindings.json_quote(cfg.task) + '}'
-        var r = run_turn(cfg, history, st)
-        var final = r[0]
-        exit_code = r[1]
+        var (final, code) = run_turn(cfg, history, st)
+        exit_code = code
         if final == "" and exit_code == 0:
             final = "(no final answer)"
         if final != "" and exit_code == 0:
             history += ',{"role":"assistant","content":' + bindings.json_quote(final) + '}'
         finish(cfg, history, st, final, exit_code)
-        return
 
     # REPL: one shared session; each stdin line is a task in context.
-    var tty = bindings.is_tty()
+    var tty = bindings.stdin_is_tty()
     if tty:
-        bindings.eprint("[agent] interactive mode — /reset clears context, /quit or Ctrl-D exits")
+        bindings.eprint("[agent] interactive mode: /reset clears context, /quit|/exit or Ctrl-D exits")
     while True:
         if tty:
             bindings.prompt("mojo> ")
         var line = String("")
         try:
             line = bindings.read_line()
-        except:
+        except e:
+            if String(e) != "eof":
+                bindings.eprint("[agent] stdin read error: " + String(e))
             break
         var t = String(line.strip())
         if t == "":
@@ -409,13 +409,11 @@ def main() raises:
         if t == "/quit" or t == "/exit":
             break
         if t == "/reset":
-            history = sys_head
+            history = initial_history
             bindings.eprint("[agent] context reset")
             continue
         history += ',{"role":"user","content":' + bindings.json_quote(t) + '}'
-        var r = run_turn(cfg, history, st)
-        var final = r[0]
-        var code = r[1]
+        var (final, code) = run_turn(cfg, history, st)
         if final == "" and code == 0:
             final = "(no final answer)"
         if final != "" and code == 0:
