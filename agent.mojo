@@ -416,11 +416,12 @@ def main() raises:
         var r = run_turn(cfg, history, st)
         var final = r[0]
         var code = r[1]
-        if final == "":
+        if final == "" and code == 0:
             final = "(no final answer)"
-        elif code == 0:
+        if final != "" and code == 0:
             history += ',{"role":"assistant","content":' + bindings.json_quote(final) + '}'
-        print(final)
+        if final != "":
+            print(final)
         if code != 0:
             bindings.eprint("[agent] turn ended with exit " + String(code))
         exit_code = code

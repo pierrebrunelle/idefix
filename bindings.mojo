@@ -258,7 +258,7 @@ def prompt(s: String):
 
 
 def read_line() raises -> String:
-    # "" on EOF; caller distinguishes EOF vs empty line via the Bool flag.
+    # Raises on EOF; an empty line returns "".
     var p = external_call["shim_read_line", cstr_ptr]()
     if not p:
         raise Error("eof")
