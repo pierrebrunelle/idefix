@@ -1,11 +1,26 @@
 # opt — mojo as an optimization engine
 
-karpathy/autoresearch pattern, generalized: **mutate artifact → measure one
-scalar → keep or discard → repeat**. The artifact can be code, a config, a
-strategy, a prompt — anything `score.sh` can grade. autoresearch is
-harness-agnostic ("spin up Claude/Codex or whatever"); mojo is the
-smallest possible engine for that loop: a 4MB binary, ~16MB RSS, zero deps,
-one OpenAI-compatible endpoint.
+karpathy/autoresearch pattern, generalized: **mutate artifact → score →
+keep or discard → repeat**. The artifact can be code, a config, a strategy,
+a prompt — anything `score.sh` can grade. autoresearch is harness-agnostic
+("spin up Claude/Codex or whatever"); mojo is the smallest possible engine
+for that loop: a 4MB binary, ~16MB RSS, zero deps, one OpenAI-compatible
+endpoint. The loop machinery itself is bash + git — no Python in the driver
+path (score.sh invokes whatever the artifact needs).
+
+## Gates + scalar, not just scalar
+
+Real optimization targets carry constraints ("faster without changing
+functionality", "fix the bug with the fewest lines"). score.sh composes
+them: **hard constraints are gates** (violated → print 9999, the worst
+possible score), **the objective is the scalar**. Multi-objective folds in
+as weighted sum or edge-probe penalty.
+
+| task | gate | scalar |
+| --- | --- | --- |
+| Jira bug, least-LOC resilient fix | test suite passes | diff lines + 100·edge-probe failures |
+| script faster, same output | output == golden reference | wall seconds |
+| improve a prediction | — | error on held-out set |
 
 ## A workspace is a git repo with three things
 
@@ -35,11 +50,16 @@ the experiment journal: `git log` shows every kept improvement.
 Env knobs: `MOJO_AGENT` (binary path), `OPT_N`, `OPT_DIRECTION`,
 `OPT_MAX_REQ`, `OPT_SECONDS`, plus mojo's own `MAX_BASE_URL`/`MAX_MODEL`.
 
-## Example: fib-speed
+## Examples
 
 `opt/examples/fib-speed/` — naive `fib(40)` in pure Python, score = wall
 seconds guarded by a correctness oracle. Baseline ~14s; a memoized version
-scores ~0.03s. Wrong answers score 9999 — the oracle runs before the clock.
+scores ~0.03s. Wrong answers score 9999.
+
+`opt/examples/bugfix-lean/` — `pct_change` crashes on `old=0`. score =
+diff-lines vs `.orig/` + 100 per adversarial edge-case failure, gated by
+the test suite. Calibrated: buggy=9999, sloppy-fix=7, lean-fix=5 — the
+gradient actually distinguishes fix quality.
 
 ## Why this shape
 
