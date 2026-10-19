@@ -11,6 +11,28 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS = os.environ.get("BENCH_RESULTS", os.path.join(ROOT, "bench", "results.jsonl"))
 CHARTS = os.environ.get("BENCH_CHARTS", os.path.join(ROOT, "bench", "charts"))
 OUT_MD = os.environ.get("BENCH_OUT_MD", os.path.join(ROOT, "bench", "RESULTS.md"))
+LOGS_BASE = os.path.join(ROOT, "bench")
+
+# A row is infra-poisoned when its log ends on a transport/endpoint failure:
+# the run measured an outage, not the harness. CURL_ERROR:28 is excluded —
+# it is a generation exceeding the request budget (server alive, real result).
+INFRA_RE = re.compile(r"CURL_ERROR:(?!28)|InternalServerError|Connection\s+error")
+
+
+def mark_infra(rows, logsdir):
+    n = 0
+    for r in rows:
+        path = os.path.join(logsdir, f"{r['client']}-{r['task']}-{r['rep']}.log")
+        try:
+            with open(path, errors="replace") as f:
+                tail = f.readlines()[-15:]
+        except OSError:
+            continue
+        if r["pass"] or not any(INFRA_RE.search(l) for l in tail):
+            continue
+        r["infra"] = True
+        n += 1
+    return n
 
 COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa",
           "pi": "#2dd4bf", "dsh": "#f778ba"}
@@ -133,17 +155,17 @@ def median(v):
     return round(statistics.median(v), 1) if v else None
 
 
-def emit_board(rows, model, cdir, cpre):
-    tasks = sorted({r["task"] for r in rows})
+def emit_board(valid, rows, model, cdir, cpre, n_infra):
+    tasks = sorted({r["task"] for r in valid})
     order = ["mojo", "ref", "aider", "pi", "dsh", "opencode"]
     clients = [c for c in order if any(r["client"] == c for r in rows)]
     os.makedirs(cdir, exist_ok=True)
 
     by = defaultdict(list)
-    for r in rows:
+    for r in valid:
         by[(r["task"], r["client"])].append(r)
     per = defaultdict(list)
-    for r in rows:
+    for r in valid:
         per[r["client"]].append(r)
 
     pass_pct, wall, rss, toks, reqs = {}, {}, {}, {}, {}
@@ -189,8 +211,11 @@ def emit_board(rows, model, cdir, cpre):
 
     lines = [f"## `{model}`",
              ""]
-    lines.append(f"{len(rows)} runs: {len(tasks)} tasks x "
+    lines.append(f"{len(valid)} valid runs ({len(rows)} total): {len(tasks)} tasks x "
                  f"{len(rows) // (len(tasks) * len(clients))} reps x {len(clients)} harnesses.")
+    if n_infra:
+        lines.append(f"**{n_infra} runs excluded: their logs end on a transport/"
+                     f"endpoint error (server outage), not a task outcome.**")
     lines.append("")
     lines.append("## Leaderboard")
     lines.append("")
@@ -234,9 +259,10 @@ def emit_board(rows, model, cdir, cpre):
     lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in rows:
+        infra = " infra" if r.get("infra") else ""
         lines.append(
             f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
-            f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']} |"
+            f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']}{infra} |"
         )
     lines.append("")
     return lines
@@ -256,11 +282,18 @@ def main():
              ""]
     for model in models:
         slug = re.sub(r"[^a-z0-9]+", "-", (model.split("/")[-1] or "model").lower()).strip("-") or "model"
+        board = [r for r in rows if (r.get("model") or "") == model]
+        logsdir = os.path.join(LOGS_BASE, f"logs-{slug}")
+        if not os.path.isdir(logsdir):
+            logsdir = os.path.join(LOGS_BASE, "logs")
+        n_infra = mark_infra(board, logsdir)
+        valid = [r for r in board if not r.get("infra")]
         lines += emit_board(
-            [r for r in rows if (r.get("model") or "") == model],
+            valid, board,
             model or "unknown",
             os.path.join(CHARTS, slug),
             f"charts/{slug}",
+            n_infra,
         )
     open(OUT_MD, "w").write("\n".join(lines) + "\n")
     print("\n".join(lines[:30]))

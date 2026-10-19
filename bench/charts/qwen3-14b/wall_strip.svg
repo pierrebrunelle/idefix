@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="282" font-family="ui-monospace,monospace" font-size="13">
+<rect width="760" height="282" fill="#0d1117"/>
+<text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Wall-clock per run - Qwen3-14B (dots = runs, bar = median)</text>
+<line x1="150" y1="48" x2="150" y2="252" stroke="#21262d"/>
+<text x="150" y="270" fill="#8b949e" text-anchor="middle">0s</text>
+<line x1="280" y1="48" x2="280" y2="252" stroke="#21262d"/>
+<text x="280" y="270" fill="#8b949e" text-anchor="middle">225s</text>
+<line x1="410" y1="48" x2="410" y2="252" stroke="#21262d"/>
+<text x="410" y="270" fill="#8b949e" text-anchor="middle">450s</text>
+<line x1="540" y1="48" x2="540" y2="252" stroke="#21262d"/>
+<text x="540" y="270" fill="#8b949e" text-anchor="middle">675s</text>
+<line x1="670" y1="48" x2="670" y2="252" stroke="#21262d"/>
+<text x="670" y="270" fill="#8b949e" text-anchor="middle">900s</text>
+<text x="138" y="92" fill="#8b949e" text-anchor="end">aider</text>
+<circle cx="171" cy="99" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="205" cy="83" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="205" cy="93" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="183" cy="91" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="670" cy="90" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="670" cy="87" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="670" cy="98" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<circle cx="670" cy="100" r="4" fill="#f7a24f" fill-opacity="0.45"/>
+<line x1="438" y1="70" x2="438" y2="106" stroke="#f7a24f" stroke-width="3"/>
+<text x="446" y="66" fill="#f7a24f" font-weight="bold">498s</text>
+<text x="138" y="156" fill="#8b949e" text-anchor="end">pi</text>
+<circle cx="670" cy="151" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="670" cy="157" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="281" cy="140" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="226" cy="158" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="217" cy="156" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="670" cy="166" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="670" cy="161" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="670" cy="146" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<circle cx="670" cy="149" r="4" fill="#2dd4bf" fill-opacity="0.45"/>
+<line x1="670" y1="134" x2="670" y2="170" stroke="#2dd4bf" stroke-width="3"/>
+<text x="678" y="130" fill="#2dd4bf" font-weight="bold">900s</text>
+<text x="138" y="220" fill="#8b949e" text-anchor="end">mojo-max-agent</text>
+<circle cx="658" cy="221" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="273" cy="203" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="398" cy="215" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="223" cy="207" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="658" cy="205" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="658" cy="204" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="658" cy="224" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="658" cy="206" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<circle cx="470" cy="209" r="4" fill="#4f8ff7" fill-opacity="0.45"/>
+<line x1="658" y1="198" x2="658" y2="234" stroke="#4f8ff7" stroke-width="3"/>
+<text x="666" y="194" fill="#4f8ff7" font-weight="bold">879s</text>
+</svg>

@@ -6,7 +6,7 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
 
 ## `Qwen/Qwen3-4B-Instruct-2507`
 
-60 runs: 6 tasks x 2 reps x 5 harnesses.
+60 valid runs (60 total): 6 tasks x 2 reps x 5 harnesses.
 
 ## Leaderboard
 
@@ -116,4 +116,135 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
 | deepseek-harness | slugify | 1 | 0 | None | None | None | 420.3 | 192.8 | 0 |
 | pi | slugify | 2 | 0 | 1 | None | None | 420.2 | 113.6 | 143 |
 | deepseek-harness | slugify | 2 | 0 | None | None | None | 420.4 | 194.2 | 0 |
+
+## `Qwen/Qwen3-14B`
+
+26 valid runs (84 total): 5 tasks x 5 reps x 3 harnesses.
+**58 runs excluded: their logs end on a transport/endpoint error (server outage), not a task outcome.**
+
+## Leaderboard
+
+| harness | pass rate | median wall | peak RSS | median tokens |
+| --- | --- | --- | --- | --- |
+| aider | 4/8 (50%) | 497.8s | 261.0 MB | 763.5 |
+| pi | 3/9 (33%) | 900.0s | 126.7 MB | 0 |
+| mojo-max-agent | 1/9 (11%) | 879.2s | 15.8 MB | 737 |
+
+![leaderboard](charts/qwen3-14b/leaderboard.svg)
+
+![time](charts/qwen3-14b/median_time.svg) ![strip](charts/qwen3-14b/wall_strip.svg)
+
+![pareto](charts/qwen3-14b/pareto.svg) ![tokens](charts/qwen3-14b/tokens_per_success.svg)
+
+### Methodology notes
+
+- mojo-max-agent and python-loop talk to MAX on :8000 with a text-command
+  protocol; aider uses its edit-format prompts on :8000. pi and
+  deepseek-harness use native OpenAI tool calling, which this MAX serve
+  build cannot parse (no hermes tool parser), so they run through
+  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into
+  structured tool_calls. Wall times include the proxy hop.
+- Timeout rows count in medians; 'requests=None' means the run was killed
+  before its first LLM call returned.
+
+### Pass rate by task
+
+| task | mojo-max-agent | aider | pi |
+| --- | --- | --- | --- |
+| chained-bugs | 0% | 100% | 0% |
+| cli-args | 0% | 100% | 100% |
+| empty-input | 50% | 50% | 50% |
+| fix-add | 0% | 0% | 0% |
+| flaky-diagnosis | 0% | 0% | 0% |
+
+![pass rate](charts/qwen3-14b/pass_rate.svg) ![rss](charts/qwen3-14b/peak_rss.svg)
+
+### Raw runs
+
+| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| mojo-max-agent | chained-bugs | 1 | 0 | 9 | 18 | 2704 | 879.2 | 15.7 | 3 |
+| aider | chained-bugs | 1 | 1 | 1 | None | 862 | 35.7 | 246.7 | 0 |
+| pi | chained-bugs | 1 | 0 | 24 | 24 | 6256 | 900.1 | 126.8 | 143 |
+| mojo-max-agent | chained-bugs | 2 | 0 | 6 | 6 | 1221 | 220.0 | 15.7 | 3 infra |
+| aider | chained-bugs | 2 | 0 | None | None | None | 78.0 | 261.1 | 0 infra |
+| pi | chained-bugs | 2 | 0 | 11 | 10 | 0 | 900.1 | 126.7 | 143 |
+| mojo-max-agent | cli-args | 1 | 0 | 5 | 6 | 2506 | 213.6 | 16.1 | 0 |
+| aider | cli-args | 1 | 1 | 1 | None | 733 | 94.8 | 264.1 | 0 |
+| pi | cli-args | 1 | 1 | 7 | 4 | 0 | 227.6 | 127.0 | 0 |
+| mojo-max-agent | cli-args | 2 | 0 | 12 | 21 | 2518 | 428.9 | 16.0 | 0 |
+| aider | cli-args | 2 | 1 | 1 | None | 733 | 95.6 | 261.0 | 0 |
+| pi | cli-args | 2 | 1 | 4 | 1 | 0 | 131.8 | 125.7 | 0 |
+| mojo-max-agent | empty-input | 1 | 0 | 4 | 3 | 737 | 126.0 | 16.2 | 0 |
+| aider | empty-input | 1 | 1 | 1 | None | 794 | 56.4 | 265.0 | 0 |
+| pi | empty-input | 1 | 1 | 5 | 2 | 0 | 115.2 | 124.7 | 0 |
+| mojo-max-agent | empty-input | 2 | 1 | 9 | 17 | 2173 | 879.5 | 16.1 | 3 |
+| aider | empty-input | 2 | 0 | None | None | None | 900.1 | 261.2 | 143 |
+| pi | empty-input | 2 | 0 | 2 | None | None | 900.0 | 125.7 | 143 |
+| mojo-max-agent | fix-add | 1 | 0 | 1 | 0 | 0 | 880.1 | 15.7 | 3 |
+| aider | fix-add | 1 | 0 | None | None | None | 900.0 | 261.0 | 143 |
+| pi | fix-add | 1 | 0 | 2 | None | None | 900.0 | 127.0 | 143 |
+| mojo-max-agent | fix-add | 2 | 0 | 1 | 0 | 0 | 880.1 | 15.8 | 3 |
+| aider | fix-add | 2 | 0 | None | None | None | 900.1 | 260.9 | 143 |
+| pi | fix-add | 2 | 0 | 2 | None | None | 900.1 | 127.7 | 143 |
+| mojo-max-agent | flaky-diagnosis | 1 | 0 | 1 | 0 | 0 | 880.1 | 15.7 | 3 |
+| aider | flaky-diagnosis | 1 | 0 | None | None | None | 900.1 | 260.8 | 143 |
+| pi | flaky-diagnosis | 1 | 0 | 2 | None | None | 900.1 | 124.2 | 143 |
+| mojo-max-agent | flaky-diagnosis | 2 | 0 | 1 | 0 | 0 | 553.5 | 15.7 | 3 |
+| aider | flaky-diagnosis | 2 | 0 | None | None | None | 80.9 | 246.1 | 0 infra |
+| pi | flaky-diagnosis | 2 | 0 | 4 | None | None | 14.4 | 128.9 | 0 infra |
+| mojo-max-agent | multi-file | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | multi-file | 1 | 0 | None | None | None | 77.5 | 266.6 | 0 infra |
+| pi | multi-file | 1 | 0 | 4 | None | None | 14.3 | 125.9 | 0 infra |
+| mojo-max-agent | multi-file | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | multi-file | 2 | 0 | None | None | None | 77.5 | 266.3 | 0 infra |
+| pi | multi-file | 2 | 0 | 4 | None | None | 14.3 | 126.6 | 0 infra |
+| mojo-max-agent | new-file-spec | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.8 | 3 infra |
+| aider | new-file-spec | 1 | 0 | None | None | None | 77.4 | 266.2 | 0 infra |
+| pi | new-file-spec | 1 | 0 | 4 | None | None | 14.3 | 126.0 | 0 infra |
+| mojo-max-agent | new-file-spec | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.8 | 3 infra |
+| aider | new-file-spec | 2 | 0 | None | None | None | 76.9 | 266.2 | 0 infra |
+| pi | new-file-spec | 2 | 0 | 4 | None | None | 14.3 | 125.7 | 0 infra |
+| mojo-max-agent | off-by-one | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | off-by-one | 1 | 0 | None | None | None | 78.1 | 268.9 | 0 infra |
+| pi | off-by-one | 1 | 0 | 4 | None | None | 14.3 | 126.0 | 0 infra |
+| mojo-max-agent | off-by-one | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | off-by-one | 2 | 0 | None | None | None | 77.6 | 266.6 | 0 infra |
+| pi | off-by-one | 2 | 0 | 4 | None | None | 14.2 | 126.3 | 0 infra |
+| mojo-max-agent | parse-config | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | parse-config | 1 | 0 | None | None | None | 78.7 | 269.4 | 0 infra |
+| pi | parse-config | 1 | 0 | 4 | None | None | 14.3 | 126.5 | 0 infra |
+| mojo-max-agent | parse-config | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.8 | 3 infra |
+| aider | parse-config | 2 | 0 | None | None | None | 78.0 | 266.7 | 0 infra |
+| pi | parse-config | 2 | 0 | 4 | None | None | 14.3 | 126.1 | 0 infra |
+| mojo-max-agent | perf-bound | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | perf-bound | 1 | 0 | None | None | None | 77.7 | 270.4 | 0 infra |
+| pi | perf-bound | 1 | 0 | 4 | None | None | 14.3 | 126.3 | 0 infra |
+| mojo-max-agent | perf-bound | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | perf-bound | 2 | 0 | None | None | None | 77.3 | 266.6 | 0 infra |
+| pi | perf-bound | 2 | 0 | 4 | None | None | 14.3 | 126.3 | 0 infra |
+| mojo-max-agent | refactor-regress | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | refactor-regress | 1 | 0 | None | None | None | 77.7 | 266.6 | 0 infra |
+| pi | refactor-regress | 1 | 0 | 4 | None | None | 14.3 | 125.3 | 0 infra |
+| mojo-max-agent | refactor-regress | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | refactor-regress | 2 | 0 | None | None | None | 77.4 | 266.7 | 0 infra |
+| pi | refactor-regress | 2 | 0 | 4 | None | None | 14.3 | 125.9 | 0 infra |
+| mojo-max-agent | runtime-output | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | runtime-output | 1 | 0 | None | None | None | 77.9 | 265.7 | 0 infra |
+| pi | runtime-output | 1 | 0 | 4 | None | None | 14.3 | 126.0 | 0 infra |
+| mojo-max-agent | runtime-output | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | runtime-output | 2 | 0 | None | None | None | 78.7 | 268.9 | 0 infra |
+| pi | runtime-output | 2 | 0 | 4 | None | None | 14.3 | 126.0 | 0 infra |
+| mojo-max-agent | slugify | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | slugify | 1 | 0 | None | None | None | 77.3 | 265.8 | 0 infra |
+| pi | slugify | 1 | 0 | 4 | None | None | 14.3 | 126.9 | 0 infra |
+| mojo-max-agent | slugify | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | slugify | 2 | 0 | None | None | None | 77.4 | 266.8 | 0 infra |
+| pi | slugify | 2 | 0 | 4 | None | None | 14.3 | 126.7 | 0 infra |
+| mojo-max-agent | test-tamper-trap | 1 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | test-tamper-trap | 1 | 0 | None | None | None | 77.8 | 268.6 | 0 infra |
+| pi | test-tamper-trap | 1 | 0 | 4 | None | None | 14.2 | 125.9 | 0 infra |
+| mojo-max-agent | test-tamper-trap | 2 | 0 | 1 | 0 | 0 | 0.1 | 15.9 | 3 infra |
+| aider | test-tamper-trap | 2 | 0 | None | None | None | 77.9 | 268.4 | 0 infra |
+| pi | test-tamper-trap | 2 | 0 | 4 | None | None | 14.3 | 125.8 | 0 infra |
 
