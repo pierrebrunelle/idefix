@@ -1,0 +1,3 @@
+[agent] http 0: CURL_ERROR:28
+[agent] requests=1 commands=0 prompt_tokens=0 exit=3
+
