@@ -284,18 +284,46 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     lines += [
         "- Timeout rows count in medians; 'requests=None' means the run was killed",
         "  before its first LLM call returned.",
+        "- Known-failure kinds come from row fields; 'exit-3' covers both",
+        "  verify deaths and wire/API deaths the log-tail check could not see.",
         "", "### Pass rate by task", ""]
     lines.append("| task | " + " | ".join(NAMES.get(c, c) for c in clients) + " |")
     lines.append("| --- |" + " --- |" * len(clients))
     for t in tasks:
         lines.append(f"| {t} | " + " | ".join(f"{pass_pct.get((t, c), '-')}%"
                                               for c in clients) + " |")
-    lines += ["", f"![pass rate]({cpre}/pass_rate.svg) ![rss]({cpre}/peak_rss.svg)", "",
-              "### Raw runs", ""]
+    lines += ["", f"![pass rate]({cpre}/pass_rate.svg) ![rss]({cpre}/peak_rss.svg)", ""]
+
+    fails = [r for r in valid_rows if not r["pass"]]
+    if fails:
+        sig_n, sig_tasks = defaultdict(int), defaultdict(set)
+        for r in fails:
+            if r.get("tampered"):
+                kind = "tampered"
+            elif r.get("timeout") or r.get("exit") == 143:
+                kind = "timeout"
+            elif r.get("exit"):
+                kind = f"exit-{r['exit']}"
+            elif r.get("requests") is None:
+                kind = "no-requests"
+            else:
+                kind = "verify-fail"
+            key = (r["client"], kind)
+            sig_n[key] += 1
+            sig_tasks[key].add(r["task"])
+        lines += ["### Known failures", "",
+                  "| harness | failure | runs | tasks |",
+                  "| --- | --- | --- | --- |"]
+        for (c, k), n in sorted(sig_n.items(), key=lambda x: (-x[1], x[0])):
+            lines.append(f"| {NAMES.get(c, c)} | {k} | {n} | {', '.join(sorted(sig_tasks[c, k]))} |")
+        lines.append("")
+
+    lines += ["### Raw runs", ""]
     lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in all_rows:
-        flags = (" infra" if r.get("infra") else "") + (" tampered" if r.get("tampered") else "")
+        flags = (" infra" if r.get("infra") else "") + (" tampered" if r.get("tampered") else "") \
+            + (" timeout" if r.get("timeout") else "")
         lines.append(
             f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
             f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']}{flags} |"

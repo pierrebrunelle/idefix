@@ -41,6 +41,8 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
   model x harness interaction, not a verdict on dsh on bigger models.
 - Timeout rows count in medians; 'requests=None' means the run was killed
   before its first LLM call returned.
+- Known-failure kinds come from row fields; 'exit-3' covers both
+  verify deaths and wire/API deaths the log-tail check could not see.
 
 ### Pass rate by task
 
@@ -54,6 +56,20 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
 | slugify | 50% | 0% | 100% | 0% | 0% |
 
 ![pass rate](charts/qwen3-4b-instruct-2507/pass_rate.svg) ![rss](charts/qwen3-4b-instruct-2507/peak_rss.svg)
+
+### Known failures
+
+| harness | failure | runs | tasks |
+| --- | --- | --- | --- |
+| deepseek-harness | timeout | 8 | empty-input, fix-add, multi-file, off-by-one, parse-config, slugify |
+| deepseek-harness | verify-fail | 4 | empty-input, fix-add, off-by-one, parse-config |
+| pi | timeout | 3 | parse-config, slugify |
+| max | verify-fail | 2 | parse-config, slugify |
+| pi | verify-fail | 2 | off-by-one, parse-config |
+| python-loop | exit-2 | 2 | slugify |
+| max | exit-2 | 1 | parse-config |
+| python-loop | exit-1 | 1 | parse-config |
+| python-loop | verify-fail | 1 | parse-config |
 
 ### Raw runs
 
@@ -96,29 +112,29 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
 | aider | slugify | 1 | 1 | 1 | None | 815 | 57.4 | 253.4 | 0 |
 | aider | slugify | 2 | 1 | 1 | None | 815 | 54.3 | 244.0 | 0 |
 | pi | empty-input | 1 | 1 | 5 | 2 | 2769 | 46.8 | 127.3 | 0 |
-| deepseek-harness | empty-input | 1 | 0 | None | None | None | 420.5 | 193.8 | 0 |
+| deepseek-harness | empty-input | 1 | 0 | None | None | None | 420.5 | 193.8 | 0 timeout |
 | pi | empty-input | 2 | 1 | 5 | 2 | 2770 | 54.8 | 128.8 | 0 |
 | deepseek-harness | empty-input | 2 | 0 | 1 | None | None | 326.1 | 191.5 | 0 |
 | pi | fix-add | 1 | 1 | 4 | 1 | 2568 | 48.4 | 125.8 | 0 |
-| deepseek-harness | fix-add | 1 | 0 | None | None | None | 420.3 | 185.0 | 0 |
+| deepseek-harness | fix-add | 1 | 0 | None | None | None | 420.3 | 185.0 | 0 timeout |
 | pi | fix-add | 2 | 1 | 4 | 1 | 2566 | 54.7 | 126.3 | 0 |
 | deepseek-harness | fix-add | 2 | 0 | 1 | None | None | 305.3 | 192.0 | 0 |
 | pi | multi-file | 1 | 1 | 5 | 2 | 2731 | 80.7 | 127.2 | 0 |
-| deepseek-harness | multi-file | 1 | 0 | None | None | None | 420.3 | 191.9 | 0 |
+| deepseek-harness | multi-file | 1 | 0 | None | None | None | 420.3 | 191.9 | 0 timeout |
 | pi | multi-file | 2 | 1 | 8 | 5 | 2874 | 165.4 | 115.4 | 0 |
-| deepseek-harness | multi-file | 2 | 0 | None | None | None | 420.5 | 187.9 | 0 |
+| deepseek-harness | multi-file | 2 | 0 | None | None | None | 420.5 | 187.9 | 0 timeout |
 | pi | off-by-one | 1 | 1 | 4 | 1 | 2585 | 78.8 | 127.0 | 0 |
-| deepseek-harness | off-by-one | 1 | 0 | None | None | None | 420.5 | 191.8 | 0 |
+| deepseek-harness | off-by-one | 1 | 0 | None | None | None | 420.5 | 191.8 | 0 timeout |
 | pi | off-by-one | 2 | 0 | 2 | 1 | 2455 | 58.5 | 114.5 | 0 |
 | deepseek-harness | off-by-one | 2 | 0 | 1 | None | None | 347.5 | 186.6 | 0 |
-| pi | parse-config | 1 | 0 | 4 | 2 | 2970 | 420.4 | 126.0 | 143 |
+| pi | parse-config | 1 | 0 | 4 | 2 | 2970 | 420.4 | 126.0 | 143 timeout |
 | deepseek-harness | parse-config | 1 | 0 | 1 | None | None | 376.1 | 192.9 | 0 |
 | pi | parse-config | 2 | 0 | 4 | 1 | 2901 | 209.5 | 109.9 | 0 |
-| deepseek-harness | parse-config | 2 | 0 | None | None | None | 420.5 | 191.6 | 0 |
-| pi | slugify | 1 | 0 | 1 | None | None | 420.1 | 124.6 | 143 |
-| deepseek-harness | slugify | 1 | 0 | None | None | None | 420.3 | 192.8 | 0 |
-| pi | slugify | 2 | 0 | 1 | None | None | 420.2 | 113.6 | 143 |
-| deepseek-harness | slugify | 2 | 0 | None | None | None | 420.4 | 194.2 | 0 |
+| deepseek-harness | parse-config | 2 | 0 | None | None | None | 420.5 | 191.6 | 0 timeout |
+| pi | slugify | 1 | 0 | 1 | None | None | 420.1 | 124.6 | 143 timeout |
+| deepseek-harness | slugify | 1 | 0 | None | None | None | 420.3 | 192.8 | 0 timeout |
+| pi | slugify | 2 | 0 | 1 | None | None | 420.2 | 113.6 | 143 timeout |
+| deepseek-harness | slugify | 2 | 0 | None | None | None | 420.4 | 194.2 | 0 timeout |
 
 ## `Qwen/Qwen3-14B`
 
@@ -152,6 +168,8 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
   product rather than the raw wire protocol.
 - Timeout rows count in medians; 'requests=None' means the run was killed
   before its first LLM call returned.
+- Known-failure kinds come from row fields; 'exit-3' covers both
+  verify deaths and wire/API deaths the log-tail check could not see.
 
 ### Pass rate by task
 
@@ -165,16 +183,25 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
 
 ![pass rate](charts/qwen3-14b/pass_rate.svg) ![rss](charts/qwen3-14b/peak_rss.svg)
 
+### Known failures
+
+| harness | failure | runs | tasks |
+| --- | --- | --- | --- |
+| pi | timeout | 6 | chained-bugs, empty-input, fix-add, flaky-diagnosis |
+| max | exit-3 | 5 | chained-bugs, fix-add, flaky-diagnosis |
+| aider | timeout | 4 | empty-input, fix-add, flaky-diagnosis |
+| max | verify-fail | 3 | cli-args, empty-input |
+
 ### Raw runs
 
 | harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | max | chained-bugs | 1 | 0 | 9 | 18 | 2704 | 879.2 | 15.7 | 3 |
 | aider | chained-bugs | 1 | 1 | 1 | None | 862 | 35.7 | 246.7 | 0 |
-| pi | chained-bugs | 1 | 0 | 24 | 24 | 6256 | 900.1 | 126.8 | 143 |
+| pi | chained-bugs | 1 | 0 | 24 | 24 | 6256 | 900.1 | 126.8 | 143 timeout |
 | max | chained-bugs | 2 | 0 | 6 | 6 | 1221 | 220.0 | 15.7 | 3 infra |
 | aider | chained-bugs | 2 | 0 | None | None | None | 78.0 | 261.1 | 0 infra |
-| pi | chained-bugs | 2 | 0 | 11 | 10 | 0 | 900.1 | 126.7 | 143 |
+| pi | chained-bugs | 2 | 0 | 11 | 10 | 0 | 900.1 | 126.7 | 143 timeout |
 | max | cli-args | 1 | 0 | 5 | 6 | 2506 | 213.6 | 16.1 | 0 |
 | aider | cli-args | 1 | 1 | 1 | None | 733 | 94.8 | 264.1 | 0 |
 | pi | cli-args | 1 | 1 | 7 | 4 | 0 | 227.6 | 127.0 | 0 |
@@ -185,17 +212,17 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
 | aider | empty-input | 1 | 1 | 1 | None | 794 | 56.4 | 265.0 | 0 |
 | pi | empty-input | 1 | 1 | 5 | 2 | 0 | 115.2 | 124.7 | 0 |
 | max | empty-input | 2 | 1 | 9 | 17 | 2173 | 879.5 | 16.1 | 3 |
-| aider | empty-input | 2 | 0 | None | None | None | 900.1 | 261.2 | 143 |
-| pi | empty-input | 2 | 0 | 2 | None | None | 900.0 | 125.7 | 143 |
+| aider | empty-input | 2 | 0 | None | None | None | 900.1 | 261.2 | 143 timeout |
+| pi | empty-input | 2 | 0 | 2 | None | None | 900.0 | 125.7 | 143 timeout |
 | max | fix-add | 1 | 0 | 1 | 0 | 0 | 880.1 | 15.7 | 3 |
-| aider | fix-add | 1 | 0 | None | None | None | 900.0 | 261.0 | 143 |
-| pi | fix-add | 1 | 0 | 2 | None | None | 900.0 | 127.0 | 143 |
+| aider | fix-add | 1 | 0 | None | None | None | 900.0 | 261.0 | 143 timeout |
+| pi | fix-add | 1 | 0 | 2 | None | None | 900.0 | 127.0 | 143 timeout |
 | max | fix-add | 2 | 0 | 1 | 0 | 0 | 880.1 | 15.8 | 3 |
-| aider | fix-add | 2 | 0 | None | None | None | 900.1 | 260.9 | 143 |
-| pi | fix-add | 2 | 0 | 2 | None | None | 900.1 | 127.7 | 143 |
+| aider | fix-add | 2 | 0 | None | None | None | 900.1 | 260.9 | 143 timeout |
+| pi | fix-add | 2 | 0 | 2 | None | None | 900.1 | 127.7 | 143 timeout |
 | max | flaky-diagnosis | 1 | 0 | 1 | 0 | 0 | 880.1 | 15.7 | 3 |
-| aider | flaky-diagnosis | 1 | 0 | None | None | None | 900.1 | 260.8 | 143 |
-| pi | flaky-diagnosis | 1 | 0 | 2 | None | None | 900.1 | 124.2 | 143 |
+| aider | flaky-diagnosis | 1 | 0 | None | None | None | 900.1 | 260.8 | 143 timeout |
+| pi | flaky-diagnosis | 1 | 0 | 2 | None | None | 900.1 | 124.2 | 143 timeout |
 | max | flaky-diagnosis | 2 | 0 | 1 | 0 | 0 | 553.5 | 15.7 | 3 |
 | aider | flaky-diagnosis | 2 | 0 | None | None | None | 80.9 | 246.1 | 0 infra |
 | pi | flaky-diagnosis | 2 | 0 | 4 | None | None | 14.4 | 128.9 | 0 infra |

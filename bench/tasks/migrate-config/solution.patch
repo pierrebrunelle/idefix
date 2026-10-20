@@ -1,0 +1,14 @@
+diff --git a/migrate.py b/migrate.py
+index 827b995..c5f82bb 100644
+--- a/migrate.py
++++ b/migrate.py
+@@ -3,8 +3,5 @@ import json
+ 
+ cfg = configparser.ConfigParser()
+ cfg.read("app.ini")
+-out = {}
+-for sec in cfg.sections():
+-    for k, v in cfg.items(sec):
+-        out[k] = v.lower()
++out = {sec: dict(cfg.items(sec)) for sec in cfg.sections()}
+ json.dump(out, open("app.json", "w"), indent=2)

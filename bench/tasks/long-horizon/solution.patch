@@ -1,0 +1,54 @@
+diff --git a/nums.py b/nums.py
+index b493c48..314fceb 100644
+--- a/nums.py
++++ b/nums.py
+@@ -1,5 +1,5 @@
+ def median(nums):
+-    s = list(nums)
++    s = sorted(nums)
+     n = len(s)
+     mid = n // 2
+     if n % 2:
+@@ -8,4 +8,4 @@ def median(nums):
+ 
+ 
+ def clamp(x, lo, hi):
+-    return max(hi, min(lo, x))
++    return max(lo, min(hi, x))
+diff --git a/store.py b/store.py
+index 75c83f8..47c0acc 100644
+--- a/store.py
++++ b/store.py
+@@ -1,7 +1,7 @@
+ def parse_pairs(s):
+     # "a=1,b=2" -> {"a": "1", "b": "2"}
+     out = {}
+-    for part in s.split(";"):
++    for part in s.split(","):
+         if "=" in part:
+             k, v = part.split("=", 1)
+             out[k] = v
+@@ -10,6 +10,6 @@ def parse_pairs(s):
+ 
+ def get_path(d, path):
+     # get_path({"a": {"b": 3}}, "a.b") -> 3
+-    for key in path:
++    for key in path.split("."):
+         d = d[key]
+     return d
+diff --git a/text.py b/text.py
+index 7060662..9e15c0d 100644
+--- a/text.py
++++ b/text.py
+@@ -1,9 +1,9 @@
+ def snake_to_camel(s):
+     parts = s.split("_")
+-    return parts[0].title() + "".join(p.title() for p in parts[1:])
++    return parts[0] + "".join(p.title() for p in parts[1:])
+ 
+ 
+ def truncate(s, n):
+     if len(s) > n:
+         return s[:n] + "..."
+-    return s + "..."
++    return s

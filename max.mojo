@@ -737,6 +737,9 @@ def main() raises:
     if resume_src != "":
         try:
             history = rebuild_history(read_file(resume_src), initial_history)
+            # the journal replays pre-compaction outputs at full fidelity, so
+            # files may have changed since they were produced; say so once
+            history += ',{"role":"user","content":"session resumed; earlier tool outputs may describe an older repo state. Re-run commands before relying on them."}'
             bindings.eprint("[max] resumed from " + resume_src)
         except e:
             if cfg.resume_file != "":

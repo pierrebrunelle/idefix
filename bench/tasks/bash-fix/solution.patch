@@ -1,0 +1,12 @@
+diff --git a/health.sh b/health.sh
+index d81b03e..0a6450a 100755
+--- a/health.sh
++++ b/health.sh
+@@ -5,5 +5,5 @@ if [ "$errors" -eq 0 ]; then
+     echo "STATUS ok"
+     exit 0
+ fi
+-echo 'STATUS fail ($errors errors)'
+-exit 0
++echo "STATUS fail ($errors errors)"
++exit 1

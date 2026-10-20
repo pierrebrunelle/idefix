@@ -1,0 +1,13 @@
+diff --git a/pipeline/totals.py b/pipeline/totals.py
+index 213689a..b203ccb 100644
+--- a/pipeline/totals.py
++++ b/pipeline/totals.py
+@@ -1,7 +1,7 @@
+ def summarize(rows):
+     qty = 0
+     total = 0.0
+-    for row in rows[:-1]:
++    for row in rows:
+         qty += int(row["qty"])
+         total += int(row["qty"]) * float(row["unit_price"])
+     return {"items": len(rows), "qty": qty, "total": total}
