@@ -4,6 +4,7 @@
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
+       | chunked
 """
 import json
 import sys
@@ -83,6 +84,23 @@ class Handler(BaseHTTPRequestHandler):
                     finish="tool_calls",
                 ),
             )
+            return
+        if MODE == "chunked" and n_tool == 0:
+            # No Content-Length: --max-http-bytes must still cap the body.
+            # Client aborts mid-stream -> EPIPE here.
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                head = b'{"id":"r","choices":[{"message":{"role":"assistant","content":"'
+                self.wfile.write(b"%x\r\n" % len(head) + head + b"\r\n")
+                chunk = b"x" * 8192
+                for _ in range(8):
+                    self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
+                self.wfile.write(b"0\r\n\r\n")
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
         if MODE == "malformed" and n_tool == 0:
             data = b'{"id":"r","choices":[{invalid json'

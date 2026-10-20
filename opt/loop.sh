@@ -14,6 +14,15 @@ DIR="${OPT_DIRECTION:-min}"   # min: lower score wins; max: higher wins
 [ -f program.md ] || { echo "missing program.md"; exit 1; }
 [ -x score.sh ] || { echo "missing executable score.sh"; exit 1; }
 git rev-parse --git-dir >/dev/null 2>&1 || git init -q
+# DROP needs HEAD to reset to: on a fresh repo, commit the baseline now
+# rather than discovering an unborn HEAD mid-loop.
+if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+  git add -A
+  git commit -qm "baseline" || {
+    echo "loop.sh: baseline commit failed (set git user.name/user.email)" >&2
+    exit 1
+  }
+fi
 mkdir -p logs
 
 better() {  # better NEW BEST -> exit 0 if new improves on best

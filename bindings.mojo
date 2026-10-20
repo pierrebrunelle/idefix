@@ -15,6 +15,7 @@ comptime CURLOPT_POSTFIELDS = 10015
 comptime CURLOPT_POSTFIELDSIZE = 60
 comptime CURLOPT_HTTPHEADER = 10023
 comptime CURLOPT_MAXFILESIZE_LARGE = 30117
+comptime CURLOPT_WRITEFUNCTION = 20011
 comptime CURLINFO_RESPONSE_CODE = 0x200000 + 2
 
 comptime WNOHANG = 1
@@ -147,6 +148,14 @@ def http_post(
         _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
             h, c_int(CURLOPT_MAXFILESIZE_LARGE), c_long(max_bytes)
         )
+    # The shim write callback is a second bound on the response body:
+    # MAXFILESIZE relies on libcurl internals (bytecount tracking) that
+    # older libcurls only applied with a known Content-Length.
+    _ = external_call["shim_http_cap", c_int](c_size_t(max_bytes))
+    var wcb = external_call["shim_write_cb_ptr", raw_ptr]()
+    _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
+        h, c_int(CURLOPT_WRITEFUNCTION), wcb
+    )
     var rbuf = cstr_ptr()
     var rsize: UInt = 0
     var fp = external_call["open_memstream", FILE_ptr](
@@ -169,7 +178,13 @@ def http_post(
     if perf != 0:
         if rbuf:
             _ = external_call["free", c_int](rbuf.value())
-        return 0, "CURL_ERROR:" + String(Int(perf))
+        var msg = "CURL_ERROR:" + String(Int(perf))
+        # 63 = CURLE_FILESIZE_EXCEEDED (MAXFILESIZE, Content-Length path);
+        # shim_http_capped = our write callback (chunked path). Both mean
+        # the --max-http-bytes cap fired.
+        if Int(perf) == 63 or external_call["shim_http_capped", c_int]() != 0:
+            msg += " (response exceeds --max-http-bytes)"
+        return 0, msg
     if not rbuf:
         return code, ""
     var resp = String(unsafe_from_utf8_ptr=rbuf.value())
@@ -441,7 +456,10 @@ def fnv1a_hex(s: String) -> String:
 
 
 def sleep_ms(ms: Int):
-    _ = external_call["usleep", c_int](c_int(ms * 1000))
+    # usleep's useconds_t is 32-bit; clamp so ms*1000 cannot overflow it.
+    var m = min(ms, 2_000_000)
+    if m > 0:
+        _ = external_call["usleep", c_int](c_int(m * 1000))
 
 
 def strip_markup(content: String) -> String:

@@ -9,9 +9,18 @@ MAXCLI="${MAXCLI:-max}"
 export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
 BASE="${MAX_BASE_URL:-http://127.0.0.1:8000/v1}"
 
+# Server up? Sends MAX_API_KEY when set so authenticated endpoints probe true.
+up() {
+    if [ -n "${MAX_API_KEY:-}" ]; then
+        curl -sf -m 2 -H "Authorization: Bearer $MAX_API_KEY" "$BASE/models" >/dev/null
+    else
+        curl -sf -m 2 "$BASE/models" >/dev/null
+    fi
+}
+
 started=""
 LOG=""
-if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
+if ! up; then
     if ! "$MAXCLI" --help 2>&1 | grep -qi serve; then
         echo "with-max: $MAXCLI has no 'serve' command (the agent binary shadows Modular's max?); set MAXCLI=/path/to/modular-max" >&2
         exit 1
@@ -27,10 +36,10 @@ if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
     keep_log=""
     trap 'kill "$started" 2>/dev/null; wait "$started" 2>/dev/null; [ -n "$LOG" ] && [ -z "$keep_log" ] && rm -f "$LOG"' EXIT
     for _ in $(seq 1 150); do
-        curl -sf -m 2 "$BASE/models" >/dev/null && break
+        up && break
         sleep 2
     done
-    curl -sf -m 2 "$BASE/models" >/dev/null || {
+    up || {
         keep_log=1
         echo "with-max: server did not come up; see $LOG" >&2
         exit 1

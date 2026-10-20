@@ -244,4 +244,9 @@ check "state-dir fail runs" 0 "$rc"
 echo "$out" | grep -q "journal/status off" && echo "PASS state-dir fail note" || { echo "FAIL state-dir fail note: $out"; FAIL=1; }
 rm -f /tmp/max-statefile
 
+# 35. chunked response has no Content-Length: --max-http-bytes still caps it
+out=$(run_mode chunked ./max --repo . --max-http-bytes 1024 --retries 0 "task" 2>&1); rc=$?
+check "chunked cap exit" 3 "$rc"
+echo "$out" | grep -q "exceeds --max-http-bytes" && echo "PASS chunked cap msg" || { echo "FAIL chunked cap msg: $out"; FAIL=1; }
+
 exit $FAIL
