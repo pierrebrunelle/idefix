@@ -34,18 +34,24 @@ score() { ./score.sh 2>/dev/null | tail -1; }
 best="$(score)"
 [ -n "$best" ] || { echo "score.sh printed no baseline score"; exit 1; }
 echo "baseline score: $best" | tee experiments.tsv
-echo -e "iter\tscore\tbest\tverdict" >> experiments.tsv
+echo -e "iter\tscore\tbest\tverdict\twhat" >> experiments.tsv
 
 for i in $(seq 1 "$ITERS"); do
   git add -A && git commit -qm "iter $((i-1)) end" --allow-empty
   "$AGENT" --repo . --instructions program.md \
     --max-requests "${OPT_MAX_REQ:-15}" --max-seconds "${OPT_SECONDS:-300}" \
-    "Iteration $i. Current best score: $best. Improve the artifact, then run ./score.sh yourself to see the score." \
+    "Iteration $i. Current best score: $best. Prior attempts (iter score best verdict files):
+$(tail -20 experiments.tsv)
+Improve the artifact, then run ./score.sh yourself to see the score." \
     > "logs/iter-$i.log" 2>&1
   new="$(score)"
+  # capture the attempt's identity before the verdict: a DROP reset erases
+  # the diff, and dropped mutations are exactly the history worth keeping
+  git add -A
+  what="$(git diff --cached --name-status HEAD -- . ':(exclude)logs' ':(exclude)experiments.tsv' | tr '\t' ' ' | paste -sd, -)"
   if [ -n "$new" ] && better "$new" "$best"; then
     verdict="KEEP"; best="$new"
-    git add -A && git commit -qm "iter $i: KEEP score=$new"
+    git commit -qm "iter $i: KEEP score=$new"
   else
     verdict="DROP"
     # reset alone leaves new untracked files behind; clean them too
@@ -53,5 +59,5 @@ for i in $(seq 1 "$ITERS"); do
     git reset -q --hard HEAD
     git clean -fdq -e logs/
   fi
-  printf "%s\t%s\t%s\t%s\n" "$i" "$new" "$best" "$verdict" | tee -a experiments.tsv
+  printf "%s\t%s\t%s\t%s\t%s\n" "$i" "$new" "$best" "$verdict" "$what" | tee -a experiments.tsv
 done

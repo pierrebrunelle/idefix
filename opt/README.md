@@ -43,9 +43,12 @@ MAX_BASE_URL=http://127.0.0.1:8002/v1 MAX_MODEL=Qwen/Qwen3-4B-Instruct-2507 \
   OPT_N=100 OPT_SECONDS=300 ./opt/loop.sh /tmp/ws1
 ```
 
-Each iteration logs to `experiments.tsv` (`iter, score, best, KEEP|DROP`)
-and `logs/iter-N.log` (max's `-v` transcript). Git history per workspace IS
-the experiment journal: `git log` shows every kept improvement.
+Each iteration logs to `experiments.tsv` (`iter, score, best, KEEP|DROP,
+what` — the attempted files, captured before a DROP erases them) and
+`logs/iter-N.log` (max's `-v` transcript). Git history per workspace IS
+the experiment journal: `git log` shows every kept improvement. The last
+20 tsv lines are injected into each iteration's prompt, so the fresh
+agent process sees prior attempts instead of retrying dropped ones.
 
 Env knobs: `MAX_AGENT` (binary path), `OPT_N`, `OPT_DIRECTION`,
 `OPT_MAX_REQ`, `OPT_SECONDS`, plus max's own `MAX_BASE_URL`/`MAX_MODEL`.
