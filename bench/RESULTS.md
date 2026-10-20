@@ -32,6 +32,9 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
   build cannot parse (no hermes tool parser), so they run through
   bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into
   structured tool_calls. Wall times include the proxy hop.
+- max-v2 is the same max binary without --bare: journal,
+  compaction and retries stay on, so it measures the shipped
+  product rather than the raw wire protocol.
 - deepseek-harness rows: the model reads the ~6k-token Cordis plugin system
   prompt and may generate refusal-style text instead of tool calls; such
   runs die at the 420s watchdog inside a single completion. A 0% here is a
@@ -144,6 +147,9 @@ task's independent `verify.sh`; tokens are usage-reported, not scored.
   build cannot parse (no hermes tool parser), so they run through
   bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into
   structured tool_calls. Wall times include the proxy hop.
+- max-v2 is the same max binary without --bare: journal,
+  compaction and retries stay on, so it measures the shipped
+  product rather than the raw wire protocol.
 - Timeout rows count in medians; 'requests=None' means the run was killed
   before its first LLM call returned.
 

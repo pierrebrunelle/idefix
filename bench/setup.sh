@@ -2,12 +2,13 @@
 # bench setup: check tools, verify the harness versions RESULTS.md was
 # produced with, create the gitignored dsh home skeleton. The matrix itself
 # still needs `max serve` on :8000 and toolcall_proxy.py on :8001.
-set -u
+set -eu
 cd "$(dirname "$0")"
 
 want_pi=1.3.0
 want_dsh=0.2.0-rc.2
 want_aider=0.86.2
+want_opencode=1.19.3
 missing=0
 
 if [ -x "../max" ]; then echo "ok    max (./max)"; else
@@ -29,10 +30,14 @@ else
     echo "MISS  dsh $want_dsh (have: $(dsh --version 2>/dev/null || echo none)) - npm install -g @deepseek-ai/dsh@$want_dsh"
     missing=1
 fi
-if command -v opencode >/dev/null 2>&1; then
-    echo "ok    opencode $(opencode --version 2>/dev/null)"
+if [ "$(opencode --version 2>/dev/null)" = "$want_opencode" ]; then
+    echo "ok    opencode $want_opencode"
 else
-    echo "MISS  opencode - npm install -g opencode-ai"; missing=1
+    echo "MISS  opencode $want_opencode (have: $(opencode --version 2>/dev/null || echo none)) - npm install -g opencode-ai@$want_opencode"
+    missing=1
+fi
+if ! command -v pnpm >/dev/null 2>&1; then
+    echo "warn  pnpm missing - dsh materializes profile bundles via pnpm"
 fi
 # aider runs via `uv tool run --from aider-chat==<ver>` (see aider_cmd);
 # this resolves and caches it so the first bench run is not the install
@@ -44,7 +49,11 @@ else
     missing=1
 fi
 
-if [ ! -d dsh-home/profiles/headless ]; then
+skeleton_ok=1
+for f in cordis.yml package.json cordis.patch.yml pnpm-workspace.yaml; do
+    [ -f "dsh-home/profiles/headless/$f" ] || skeleton_ok=0
+done
+if [ "$skeleton_ok" -eq 0 ]; then
     mkdir -p dsh-home/profiles/headless
     cat > dsh-home/profiles/headless/cordis.yml <<'EOF'
 # dsh profile root — an empty entry list. The tree is composed as patches:
@@ -85,7 +94,7 @@ else
     echo "ok    dsh-home/profiles/headless"
 fi
 
-for url in http://127.0.0.1:8000/v1 http://127.0.0.1:8001/v1; do
+for url in "${MAX_BASE_URL:-http://127.0.0.1:8000/v1}" "${BENCH_TOOLCALL_BASE:-http://127.0.0.1:8001/v1}"; do
     if curl -sf -m 3 "$url/models" >/dev/null 2>&1; then
         echo "up    $url"
     else

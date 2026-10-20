@@ -2,7 +2,7 @@
 
 Harness comparison matrix: every task in `tasks/` x every harness x N
 reps, rows appended to `results.jsonl`; `analyze.py` renders `RESULTS.md`
-and `charts/*.svg`.
+and `charts/<model-slug>/*.svg`.
 
 Harnesses: `mojo` (max `--bare`), `maxv2` (max with journal, compaction
 and retries on), `ref` (`tests/ref_client.py`), `aider`, `pi`, `dsh`,
@@ -13,24 +13,40 @@ opencode go through `toolcall_proxy.py` on :8001, which rewrites Hermes
 ## Run
 
     ./bench/setup.sh                            # tool + pinned-version checks
-    max serve                                   # model endpoint, :8000
+    max serve --model <org/name>                # Modular max CLI, :8000 - not the
+                                              # agent binary (see scripts/with-max.sh)
     python3 bench/toolcall_proxy.py             # terminal 2, :8001
     MAX_MODEL=<org/name> python3 bench/run_matrix.py 2            # 2 reps, all harnesses
     MAX_MODEL=<org/name> python3 bench/run_matrix.py 2 mojo,ref   # subset
     python3 bench/analyze.py
 
-`run_matrix.py` preflights the endpoints and refuses to run when they are
-down. Provider configs are rendered into `bench/.generated/` (gitignored)
-from the committed templates; nothing tracked is rewritten per model.
+`run_matrix.py` refuses to run when `MAX_MODEL` is unset, when the
+endpoints are down, or when the server on :8000 is not serving that
+model. Provider configs are rendered into `bench/.generated/`
+(gitignored) from the committed templates; nothing tracked is rewritten
+per model.
+
+`results.jsonl` and the log/chart dirs are tracked artifacts: a repro
+run modifies them in place. Point `BENCH_RESULTS` and `BENCH_LOGS` at
+scratch paths to keep the tree clean.
 
 ## Integrity
 
-Each row carries `run_id` (UTC time + git sha), `ts` and `bench_version`.
-Before a harness runs, every file matching the task's `meta.json`
-`protected` globs (default `["test_*"]` when no meta.json) is
-sha256-snapshotted; a changed or deleted protected file fails the row
-with `"tampered": true`. `analyze.py` only falls back to the shared
-`logs/` dir for rows without `run_id`.
+Each row carries `run_id` (UTC time + git sha, `-dirty` when the tree is
+dirty), `ts` and `bench_version`. After each run the task's copied repo
+is compared against the pristine `tasks/<name>/repo/` for every file
+matching `meta.json`'s `protected` globs (default `["test_*"]` when no
+meta.json; a glob matches a file's repo-relative path or its basename,
+and `*` can cross `/`). A changed, deleted or added protected file fails
+the row with `"tampered": true`. The protected list is appended to the
+task prompt, so the constraint is never invisible.
 
-Env knobs: `BENCH_RESULTS`, `BENCH_LOGS`, `BENCH_TIMEOUT`, `BENCH_TASKS`,
-`MAX_BASE_URL`, `BENCH_TOOLCALL_BASE`.
+Logs and transcripts land in `logs-<model-slug>/<run_id>/`, so
+`analyze.py` attributes infra failures to the right batch. For rows
+without `run_id` (pre-`run_id` data) it falls back to the shared
+`logs/` dir.
+
+Env knobs: `MAX_MODEL` (required), `MAX_BASE_URL`, `BENCH_TOOLCALL_BASE`,
+`BENCH_RESULTS`, `BENCH_LOGS`, `BENCH_TIMEOUT`, `BENCH_TASKS`,
+`BENCH_CHARTS`, `BENCH_OUT_MD`. The proxy reads `PROXY_UPSTREAM`,
+`PROXY_PORT`, `PROXY_TEMPLATE_KWARGS`, `PROXY_REWRITE`.

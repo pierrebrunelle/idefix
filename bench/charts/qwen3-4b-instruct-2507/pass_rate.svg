@@ -1,80 +1,80 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="760" height="350" font-family="ui-monospace,monospace" font-size="13">
-<rect width="760" height="350" fill="#0d1117"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="432" font-family="ui-monospace,monospace" font-size="13">
+<rect width="760" height="432" fill="#0d1117"/>
 <text x="24" y="30" fill="#e6edf3" font-size="16" font-weight="bold">Pass rate by task (%) - Qwen3-4B-Instruct-2507</text>
-<text x="122" y="77" fill="#8b949e" text-anchor="end">empty-input</text>
-<rect x="130" y="58" width="520" height="2" rx="2" fill="#4f8ff7"/>
-<text x="656" y="58" fill="#8b949e">100</text>
-<rect x="130" y="64" width="520" height="2" rx="2" fill="#9a9a9a"/>
+<text x="122" y="82" fill="#8b949e" text-anchor="end">empty-input</text>
+<rect x="130" y="58" width="520" height="5" rx="2" fill="#4f8ff7"/>
 <text x="656" y="64" fill="#8b949e">100</text>
-<rect x="130" y="70" width="520" height="2" rx="2" fill="#f7a24f"/>
-<text x="656" y="70" fill="#8b949e">100</text>
-<rect x="130" y="76" width="520" height="2" rx="2" fill="#2dd4bf"/>
-<text x="656" y="76" fill="#8b949e">100</text>
-<rect x="130" y="82" width="1" height="2" rx="2" fill="#f778ba"/>
-<text x="137" y="82" fill="#8b949e">0</text>
-<text x="122" y="121" fill="#8b949e" text-anchor="end">fix-add</text>
-<rect x="130" y="102" width="520" height="2" rx="2" fill="#4f8ff7"/>
-<text x="656" y="102" fill="#8b949e">100</text>
-<rect x="130" y="108" width="520" height="2" rx="2" fill="#9a9a9a"/>
-<text x="656" y="108" fill="#8b949e">100</text>
-<rect x="130" y="114" width="520" height="2" rx="2" fill="#f7a24f"/>
-<text x="656" y="114" fill="#8b949e">100</text>
-<rect x="130" y="120" width="520" height="2" rx="2" fill="#2dd4bf"/>
-<text x="656" y="120" fill="#8b949e">100</text>
-<rect x="130" y="126" width="1" height="2" rx="2" fill="#f778ba"/>
-<text x="137" y="126" fill="#8b949e">0</text>
-<text x="122" y="165" fill="#8b949e" text-anchor="end">multi-file</text>
-<rect x="130" y="146" width="520" height="2" rx="2" fill="#4f8ff7"/>
+<rect x="130" y="67" width="520" height="5" rx="2" fill="#9a9a9a"/>
+<text x="656" y="73" fill="#8b949e">100</text>
+<rect x="130" y="76" width="520" height="5" rx="2" fill="#f7a24f"/>
+<text x="656" y="82" fill="#8b949e">100</text>
+<rect x="130" y="85" width="520" height="5" rx="2" fill="#2dd4bf"/>
+<text x="656" y="91" fill="#8b949e">100</text>
+<rect x="130" y="94" width="1" height="5" rx="2" fill="#f778ba"/>
+<text x="137" y="100" fill="#8b949e">0</text>
+<text x="122" y="137" fill="#8b949e" text-anchor="end">fix-add</text>
+<rect x="130" y="113" width="520" height="5" rx="2" fill="#4f8ff7"/>
+<text x="656" y="119" fill="#8b949e">100</text>
+<rect x="130" y="122" width="520" height="5" rx="2" fill="#9a9a9a"/>
+<text x="656" y="128" fill="#8b949e">100</text>
+<rect x="130" y="131" width="520" height="5" rx="2" fill="#f7a24f"/>
+<text x="656" y="137" fill="#8b949e">100</text>
+<rect x="130" y="140" width="520" height="5" rx="2" fill="#2dd4bf"/>
 <text x="656" y="146" fill="#8b949e">100</text>
-<rect x="130" y="152" width="520" height="2" rx="2" fill="#9a9a9a"/>
-<text x="656" y="152" fill="#8b949e">100</text>
-<rect x="130" y="158" width="520" height="2" rx="2" fill="#f7a24f"/>
-<text x="656" y="158" fill="#8b949e">100</text>
-<rect x="130" y="164" width="520" height="2" rx="2" fill="#2dd4bf"/>
-<text x="656" y="164" fill="#8b949e">100</text>
-<rect x="130" y="170" width="1" height="2" rx="2" fill="#f778ba"/>
-<text x="137" y="170" fill="#8b949e">0</text>
-<text x="122" y="209" fill="#8b949e" text-anchor="end">off-by-one</text>
-<rect x="130" y="190" width="520" height="2" rx="2" fill="#4f8ff7"/>
-<text x="656" y="190" fill="#8b949e">100</text>
-<rect x="130" y="196" width="520" height="2" rx="2" fill="#9a9a9a"/>
-<text x="656" y="196" fill="#8b949e">100</text>
-<rect x="130" y="202" width="520" height="2" rx="2" fill="#f7a24f"/>
-<text x="656" y="202" fill="#8b949e">100</text>
-<rect x="130" y="208" width="260" height="2" rx="2" fill="#2dd4bf"/>
-<text x="396" y="208" fill="#8b949e">50</text>
-<rect x="130" y="214" width="1" height="2" rx="2" fill="#f778ba"/>
-<text x="137" y="214" fill="#8b949e">0</text>
-<text x="122" y="253" fill="#8b949e" text-anchor="end">parse-config</text>
-<rect x="130" y="234" width="1" height="2" rx="2" fill="#4f8ff7"/>
-<text x="137" y="234" fill="#8b949e">0</text>
-<rect x="130" y="240" width="1" height="2" rx="2" fill="#9a9a9a"/>
-<text x="137" y="240" fill="#8b949e">0</text>
-<rect x="130" y="246" width="520" height="2" rx="2" fill="#f7a24f"/>
-<text x="656" y="246" fill="#8b949e">100</text>
-<rect x="130" y="252" width="1" height="2" rx="2" fill="#2dd4bf"/>
-<text x="137" y="252" fill="#8b949e">0</text>
-<rect x="130" y="258" width="1" height="2" rx="2" fill="#f778ba"/>
-<text x="137" y="258" fill="#8b949e">0</text>
-<text x="122" y="297" fill="#8b949e" text-anchor="end">slugify</text>
-<rect x="130" y="278" width="260" height="2" rx="2" fill="#4f8ff7"/>
-<text x="396" y="278" fill="#8b949e">50</text>
-<rect x="130" y="284" width="1" height="2" rx="2" fill="#9a9a9a"/>
+<rect x="130" y="149" width="1" height="5" rx="2" fill="#f778ba"/>
+<text x="137" y="155" fill="#8b949e">0</text>
+<text x="122" y="192" fill="#8b949e" text-anchor="end">multi-file</text>
+<rect x="130" y="168" width="520" height="5" rx="2" fill="#4f8ff7"/>
+<text x="656" y="174" fill="#8b949e">100</text>
+<rect x="130" y="177" width="520" height="5" rx="2" fill="#9a9a9a"/>
+<text x="656" y="183" fill="#8b949e">100</text>
+<rect x="130" y="186" width="520" height="5" rx="2" fill="#f7a24f"/>
+<text x="656" y="192" fill="#8b949e">100</text>
+<rect x="130" y="195" width="520" height="5" rx="2" fill="#2dd4bf"/>
+<text x="656" y="201" fill="#8b949e">100</text>
+<rect x="130" y="204" width="1" height="5" rx="2" fill="#f778ba"/>
+<text x="137" y="210" fill="#8b949e">0</text>
+<text x="122" y="247" fill="#8b949e" text-anchor="end">off-by-one</text>
+<rect x="130" y="223" width="520" height="5" rx="2" fill="#4f8ff7"/>
+<text x="656" y="229" fill="#8b949e">100</text>
+<rect x="130" y="232" width="520" height="5" rx="2" fill="#9a9a9a"/>
+<text x="656" y="238" fill="#8b949e">100</text>
+<rect x="130" y="241" width="520" height="5" rx="2" fill="#f7a24f"/>
+<text x="656" y="247" fill="#8b949e">100</text>
+<rect x="130" y="250" width="260" height="5" rx="2" fill="#2dd4bf"/>
+<text x="396" y="256" fill="#8b949e">50</text>
+<rect x="130" y="259" width="1" height="5" rx="2" fill="#f778ba"/>
+<text x="137" y="265" fill="#8b949e">0</text>
+<text x="122" y="302" fill="#8b949e" text-anchor="end">parse-config</text>
+<rect x="130" y="278" width="1" height="5" rx="2" fill="#4f8ff7"/>
 <text x="137" y="284" fill="#8b949e">0</text>
-<rect x="130" y="290" width="520" height="2" rx="2" fill="#f7a24f"/>
-<text x="656" y="290" fill="#8b949e">100</text>
-<rect x="130" y="296" width="1" height="2" rx="2" fill="#2dd4bf"/>
-<text x="137" y="296" fill="#8b949e">0</text>
-<rect x="130" y="302" width="1" height="2" rx="2" fill="#f778ba"/>
-<text x="137" y="302" fill="#8b949e">0</text>
-<rect x="560" y="14" width="10" height="10" fill="#4f8ff7"/>
-<text x="574" y="23" fill="#8b949e" font-size="11">max</text>
-<rect x="650" y="14" width="10" height="10" fill="#9a9a9a"/>
-<text x="664" y="23" fill="#8b949e" font-size="11">python-loop</text>
-<rect x="740" y="14" width="10" height="10" fill="#f7a24f"/>
-<text x="754" y="23" fill="#8b949e" font-size="11">aider</text>
-<rect x="830" y="14" width="10" height="10" fill="#2dd4bf"/>
-<text x="844" y="23" fill="#8b949e" font-size="11">pi</text>
-<rect x="920" y="14" width="10" height="10" fill="#f778ba"/>
-<text x="934" y="23" fill="#8b949e" font-size="11">deepseek-harness</text>
+<rect x="130" y="287" width="1" height="5" rx="2" fill="#9a9a9a"/>
+<text x="137" y="293" fill="#8b949e">0</text>
+<rect x="130" y="296" width="520" height="5" rx="2" fill="#f7a24f"/>
+<text x="656" y="302" fill="#8b949e">100</text>
+<rect x="130" y="305" width="1" height="5" rx="2" fill="#2dd4bf"/>
+<text x="137" y="311" fill="#8b949e">0</text>
+<rect x="130" y="314" width="1" height="5" rx="2" fill="#f778ba"/>
+<text x="137" y="320" fill="#8b949e">0</text>
+<text x="122" y="357" fill="#8b949e" text-anchor="end">slugify</text>
+<rect x="130" y="333" width="260" height="5" rx="2" fill="#4f8ff7"/>
+<text x="396" y="339" fill="#8b949e">50</text>
+<rect x="130" y="342" width="1" height="5" rx="2" fill="#9a9a9a"/>
+<text x="137" y="348" fill="#8b949e">0</text>
+<rect x="130" y="351" width="520" height="5" rx="2" fill="#f7a24f"/>
+<text x="656" y="357" fill="#8b949e">100</text>
+<rect x="130" y="360" width="1" height="5" rx="2" fill="#2dd4bf"/>
+<text x="137" y="366" fill="#8b949e">0</text>
+<rect x="130" y="369" width="1" height="5" rx="2" fill="#f778ba"/>
+<text x="137" y="375" fill="#8b949e">0</text>
+<rect x="130" y="412" width="10" height="10" fill="#4f8ff7"/>
+<text x="144" y="421" fill="#8b949e" font-size="11">max</text>
+<rect x="179" y="412" width="10" height="10" fill="#9a9a9a"/>
+<text x="193" y="421" fill="#8b949e" font-size="11">python-loop</text>
+<rect x="284" y="412" width="10" height="10" fill="#f7a24f"/>
+<text x="298" y="421" fill="#8b949e" font-size="11">aider</text>
+<rect x="347" y="412" width="10" height="10" fill="#2dd4bf"/>
+<text x="361" y="421" fill="#8b949e" font-size="11">pi</text>
+<rect x="389" y="412" width="10" height="10" fill="#f778ba"/>
+<text x="403" y="421" fill="#8b949e" font-size="11">deepseek-harness</text>
 </svg>

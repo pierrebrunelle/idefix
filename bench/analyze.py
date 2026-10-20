@@ -23,20 +23,23 @@ def mark_infra(rows, logsdir):
     n = 0
     for r in rows:
         name = f"{r['client']}-{r['task']}-{r['rep']}.log"
-        try:
-            with open(os.path.join(logsdir, name), errors="replace") as f:
-                tail = f.readlines()[-15:]
-        except OSError:
-            if r.get("run_id"):
-                # run_id rows never fall back to shared logs/: that dir can
-                # hold a different model's run and mark infra against it
-                continue
+        if r.get("run_id"):
+            # logs are namespaced by run_id so batches never share a file
+            paths = [os.path.join(logsdir, r["run_id"], name)]
+        else:
+            # legacy rows predate run_id: their logs lived in the dir for
+            # their model or in the shared bench/logs
+            paths = [os.path.join(logsdir, name),
+                     os.path.join(LOGS_BASE, "logs", name)]
+        tail = None
+        for p in paths:
             try:
-                with open(os.path.join(LOGS_BASE, "logs", name), errors="replace") as f:
+                with open(p, errors="replace") as f:
                     tail = f.readlines()[-15:]
+                break
             except OSError:
-                continue
-        if r["pass"] or not any(INFRA_RE.search(l) for l in tail):
+                pass
+        if tail is None or r["pass"] or not any(INFRA_RE.search(l) for l in tail):
             continue
         r["infra"] = True
         n += 1
@@ -140,7 +143,18 @@ def chart_grouped(title, groups, series, data, ymax, unit="", w=760):
     # row height scales with series count so bars never drop below 4px
     bar_h = max(4, 26 // n_s)
     row_h = n_s * (bar_h + 4)
-    h = pad_t + len(groups) * (row_h + 10) + 30
+    # pack the legend into lines under the chart; item width tracks label
+    # length so any series count fits on the canvas
+    items = [(s, NAMES.get(s, s)) for s in series]
+    llines, lx = [[]], pad_l
+    for s, lbl in items:
+        iw = 14 + 7 * len(lbl) + 14
+        if lx + iw > w - 10 and llines[-1]:
+            llines.append([])
+            lx = pad_l
+        llines[-1].append((s, lbl, iw))
+        lx += iw
+    h = pad_t + len(groups) * (row_h + 10) + 30 + 16 * len(llines)
     plot_w = w - pad_l - pad_r
     out = svg_head(w, h, title)
     for gi, g in enumerate(groups):
@@ -153,11 +167,15 @@ def chart_grouped(title, groups, series, data, ymax, unit="", w=760):
                 continue
             bw = max(1, plot_w * v / ymax)
             out.append(f'<rect x="{pad_l}" y="{y}" width="{bw:.0f}" height="{bar_h}" rx="2" fill="{COLORS.get(s, MUT)}"/>')
-            out.append(f'<text x="{pad_l + bw + 6:.0f}" y="{y + bar_h - 2}" fill="{MUT}">{v:g}{unit}</text>')
-    lx, ly = w - 200, 14
-    for si, s in enumerate(series):
-        out.append(f'<rect x="{lx + si * 90}" y="{ly}" width="10" height="10" fill="{COLORS.get(s, MUT)}"/>')
-        out.append(f'<text x="{lx + si * 90 + 14}" y="{ly + 9}" fill="{MUT}" font-size="11">{esc(NAMES.get(s, s))}</text>')
+            out.append(f'<text x="{pad_l + bw + 6:.0f}" y="{y + max(bar_h - 2, bar_h // 2 + 4)}" fill="{MUT}">{v:g}{unit}</text>')
+    ly = h - 16 * len(llines) - 4
+    for line in llines:
+        lx = pad_l
+        for s, lbl, iw in line:
+            out.append(f'<rect x="{lx}" y="{ly}" width="10" height="10" fill="{COLORS.get(s, MUT)}"/>')
+            out.append(f'<text x="{lx + 14}" y="{ly + 9}" fill="{MUT}" font-size="11">{esc(lbl)}</text>')
+            lx += iw
+        ly += 16
     out.append("</svg>")
     return "\n".join(out)
 
@@ -170,7 +188,10 @@ def median(v):
 def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     tasks = sorted({r["task"] for r in valid_rows})
     order = ["mojo", "maxv2", "ref", "aider", "pi", "dsh", "opencode"]
-    clients = [c for c in order if any(r["client"] == c for r in all_rows)]
+    # clients come from valid rows: a harness with no valid rows has no
+    # measurable column, and deriving from valid_rows keeps len(per[c]) > 0
+    clients = ([c for c in order if any(r["client"] == c for r in valid_rows)]
+               + sorted({r["client"] for r in valid_rows} - set(order)))
     os.makedirs(cdir, exist_ok=True)
 
     by = defaultdict(list)
@@ -250,7 +271,10 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
               "  deepseek-harness use native OpenAI tool calling, which this MAX serve",
               "  build cannot parse (no hermes tool parser), so they run through",
               "  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into",
-              "  structured tool_calls. Wall times include the proxy hop."]
+              "  structured tool_calls. Wall times include the proxy hop.",
+              "- max-v2 is the same max binary without --bare: journal,",
+              "  compaction and retries stay on, so it measures the shipped",
+              "  product rather than the raw wire protocol."]
     if "dsh" in clients:
         lines += [
             "- deepseek-harness rows: the model reads the ~6k-token Cordis plugin system",
@@ -295,7 +319,9 @@ def main():
     for model in models:
         slug = re.sub(r"[^a-z0-9]+", "-", (model.split("/")[-1] or "model").lower()).strip("-") or "model"
         board = [r for r in rows if (r.get("model") or "") == model]
-        n_infra = mark_infra(board, os.path.join(LOGS_BASE, f"logs-{slug}"))
+        n_infra = mark_infra(
+            board,
+            os.environ.get("BENCH_LOGS") or os.path.join(LOGS_BASE, f"logs-{slug}"))
         valid = [r for r in board if not r.get("infra")]
         lines += emit_board(
             valid, board,

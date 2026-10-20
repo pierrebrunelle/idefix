@@ -90,9 +90,10 @@ when isolation matters.
 
 `bench/` runs an 18-task suite against max (a `--bare` arm and a
 full-featured `maxv2` arm), a python reference loop, aider, pi, dsh and
-opencode at the same endpoint: `python3 bench/run_matrix.py 2`, then
+opencode at the same endpoint: `MAX_MODEL=<org/name> python3 bench/run_matrix.py 2`, then
 `python3 bench/analyze.py` writes `bench/RESULTS.md`. Headline on
-Qwen3-4B-Instruct-2507: 75% pass at ~16 MB peak RSS. Setup and repro:
+Qwen3-4B-Instruct-2507 (the 6-task x 5-harness run in `bench/RESULTS.md`):
+75% pass at ~16 MB peak RSS. Setup and repro:
 `bench/README.md`.
 
 ## Install
