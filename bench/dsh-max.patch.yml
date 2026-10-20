@@ -13,6 +13,8 @@
           - id: Qwen/Qwen3-14B
             contextWindow: 188800
             maxTokens: 32768
+            samplingParams:
+              temperature: 0.6
 - id: agent-default-model
   config:
     provider: max

@@ -7,3 +7,5 @@ __pycache__/
 
 # dsh runtime state (sessions, storages)
 bench/dsh-home/
+# provider configs rendered per-run by configure_backends()
+bench/.generated/

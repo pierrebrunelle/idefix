@@ -1,0 +1,3 @@
+{
+  "protected": ["data/*", "main.py"]
+}

@@ -1,0 +1,1 @@
+In this repo, six helpers across text.py, nums.py and store.py are broken (two per file). test_kit.py covers all of them and currently fails on the first. Use bash to fix every helper; do not modify the tests. Run 'python3 test_kit.py' until it prints TEST PASSED, then report.

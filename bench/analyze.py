@@ -22,22 +22,30 @@ INFRA_RE = re.compile(r"CURL_ERROR:(?!28\b)|InternalServerError|Connection\s+err
 def mark_infra(rows, logsdir):
     n = 0
     for r in rows:
-        path = os.path.join(logsdir, f"{r['client']}-{r['task']}-{r['rep']}.log")
+        name = f"{r['client']}-{r['task']}-{r['rep']}.log"
         try:
-            with open(path, errors="replace") as f:
+            with open(os.path.join(logsdir, name), errors="replace") as f:
                 tail = f.readlines()[-15:]
         except OSError:
-            continue
+            if r.get("run_id"):
+                # run_id rows never fall back to shared logs/: that dir can
+                # hold a different model's run and mark infra against it
+                continue
+            try:
+                with open(os.path.join(LOGS_BASE, "logs", name), errors="replace") as f:
+                    tail = f.readlines()[-15:]
+            except OSError:
+                continue
         if r["pass"] or not any(INFRA_RE.search(l) for l in tail):
             continue
         r["infra"] = True
         n += 1
     return n
 
-COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa",
-          "pi": "#2dd4bf", "dsh": "#f778ba"}
-NAMES = {"mojo": "max", "ref": "python-loop", "aider": "aider", "opencode": "opencode",
-         "pi": "pi", "dsh": "deepseek-harness"}
+COLORS = {"mojo": "#4f8ff7", "maxv2": "#8fd14f", "ref": "#9a9a9a", "aider": "#f7a24f",
+          "opencode": "#a78bfa", "pi": "#2dd4bf", "dsh": "#f778ba"}
+NAMES = {"mojo": "max", "maxv2": "max-v2", "ref": "python-loop", "aider": "aider",
+         "opencode": "opencode", "pi": "pi", "dsh": "deepseek-harness"}
 BG, FG, MUT, GRID = "#0d1117", "#e6edf3", "#8b949e", "#21262d"
 random.seed(7)
 
@@ -125,11 +133,15 @@ def chart_scatter(title, points, w=760, h=420):
 
 
 def chart_grouped(title, groups, series, data, ymax, unit="", w=760):
-    row_h, pad_t, pad_l, pad_r = 34, 56, 130, 110
+    pad_t, pad_l, pad_r = 56, 130, 110
     n_s = len(series)
+    if not n_s or not groups:
+        return "\n".join(svg_head(w, 90, title) + ["</svg>"])
+    # row height scales with series count so bars never drop below 4px
+    bar_h = max(4, 26 // n_s)
+    row_h = n_s * (bar_h + 4)
     h = pad_t + len(groups) * (row_h + 10) + 30
     plot_w = w - pad_l - pad_r
-    bar_h = row_h // n_s - 4
     out = svg_head(w, h, title)
     for gi, g in enumerate(groups):
         y0 = pad_t + gi * (row_h + 10)
@@ -157,7 +169,7 @@ def median(v):
 
 def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     tasks = sorted({r["task"] for r in valid_rows})
-    order = ["mojo", "ref", "aider", "pi", "dsh", "opencode"]
+    order = ["mojo", "maxv2", "ref", "aider", "pi", "dsh", "opencode"]
     clients = [c for c in order if any(r["client"] == c for r in all_rows)]
     os.makedirs(cdir, exist_ok=True)
 
@@ -259,10 +271,10 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in all_rows:
-        infra = " infra" if r.get("infra") else ""
+        flags = (" infra" if r.get("infra") else "") + (" tampered" if r.get("tampered") else "")
         lines.append(
             f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
-            f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']}{infra} |"
+            f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']}{flags} |"
         )
     lines.append("")
     return lines
@@ -283,10 +295,7 @@ def main():
     for model in models:
         slug = re.sub(r"[^a-z0-9]+", "-", (model.split("/")[-1] or "model").lower()).strip("-") or "model"
         board = [r for r in rows if (r.get("model") or "") == model]
-        logsdir = os.path.join(LOGS_BASE, f"logs-{slug}")
-        if not os.path.isdir(logsdir):
-            logsdir = os.path.join(LOGS_BASE, "logs")
-        n_infra = mark_infra(board, logsdir)
+        n_infra = mark_infra(board, os.path.join(LOGS_BASE, f"logs-{slug}"))
         valid = [r for r in board if not r.get("infra")]
         lines += emit_board(
             valid, board,
