@@ -61,7 +61,8 @@ Built to be left unattended on a local model:
   tool result; `--no-loop-guard` disables.
 - `--notify CMD` runs CMD in the repo when the run finishes.
 - `--bare` disables every post-v1 behavior (no state files, no AGENTS.md,
-  no compaction/retries/echo) for protocol parity with `tests/ref_client.py`.
+  no compaction/retries/echo) for protocol parity with `tests/ref_client.py`;
+  `--continue`, `--resume` and `--notify` are rejected, not ignored.
 
 ## Configuration
 

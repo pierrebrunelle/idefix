@@ -1,8 +1,9 @@
 #!/bin/bash
 # with-max.sh [max args...] — lazily serve MAX_MODEL via `max serve`, then
-# run ./max. If a server already answers at MAX_BASE_URL, it is left alone.
+# run the built max binary. If a server already answers at MAX_BASE_URL, it
+# is left alone. Runs from the caller's cwd: --repo paths are relative to it.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 MAXCLI="${MAXCLI:-max}"
 export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
@@ -35,7 +36,7 @@ if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
         exit 1
     }
 fi
-./max "$@"
+"$ROOT/max" "$@"
 rc=$?
 # Plain exit so the EXIT trap fires: kill the server we started, drop its log.
 exit "$rc"

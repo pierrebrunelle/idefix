@@ -224,4 +224,24 @@ check "dashdash answer" "Done." "$out"
 out=$(run_mode flaky ./max --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
 check "cap counts retries exit" 3 "$rc"
 
+# 32. --bare keeps v1 wire behavior: context 400 -> exit 3, never compacts
+out=$(run_mode ctxerr ./max --repo . --bare "task" 2>/dev/null); rc=$?
+check "bare ctxerr exit" 3 "$rc"
+grep -q "cleared; re-run" /tmp/stub_ctxerr.log && { echo "FAIL bare compacted"; FAIL=1; } || echo "PASS bare no compact"
+
+# 33. --bare rejects session/notify flags instead of silently dropping them
+./max --repo . --bare --continue "task" >/dev/null 2>&1; check "bare continue exit" 64 "$?"
+./max --repo . --bare --resume /tmp/max-res.jsonl "task" >/dev/null 2>&1; check "bare resume exit" 64 "$?"
+./max --repo . --bare --notify true "task" >/dev/null 2>&1; check "bare notify exit" 64 "$?"
+
+# 34. --repo must be a directory; unusable state dir warns but runs
+out=$(./max --repo ./README.md "task" 2>&1); rc=$?
+check "repo file exit" 64 "$rc"
+echo "$out" | grep -q "not a directory" && echo "PASS repo file msg" || { echo "FAIL repo file msg: $out"; FAIL=1; }
+touch /tmp/max-statefile
+out=$(run_mode normal ./max --repo . --state-dir /tmp/max-statefile "task" 2>&1 >/dev/null); rc=$?
+check "state-dir fail runs" 0 "$rc"
+echo "$out" | grep -q "journal/status off" && echo "PASS state-dir fail note" || { echo "FAIL state-dir fail note: $out"; FAIL=1; }
+rm -f /tmp/max-statefile
+
 exit $FAIL

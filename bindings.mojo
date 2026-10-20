@@ -405,6 +405,15 @@ def append_file(path: String, contents: String) -> Bool:
     return True
 
 
+def is_dir(path: String) -> Bool:
+    var p = path
+    var d = external_call["opendir", raw_ptr](p.as_c_string_span().ptr())
+    if not d:
+        return False
+    _ = external_call["closedir", c_int](d.value())
+    return True
+
+
 def realpath(path: String) -> String:
     var p = path
     var buf = List[UInt8](capacity=4096)

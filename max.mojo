@@ -222,14 +222,15 @@ def parse_args() raises -> Config:
     var accrc = external_call["access", c_int](acc.as_c_string_span().ptr(), c_int(0))
     if accrc != 0:
         die("repo path does not exist: " + cfg.repo, 64)
+    if not bindings.is_dir(cfg.repo):
+        die("repo path is not a directory: " + cfg.repo, 64)
     if cfg.bare:
         # bench-compat mode: every behavior added after the original loop off
+        if cfg.cont or cfg.resume_file != "" or cfg.notify != "":
+            die("--bare disables --continue, --resume and --notify", 64)
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
-        cfg.notify = ""
-        cfg.cont = False
-        cfg.resume_file = ""
     if cfg.state_root == "":
         cfg.state_root = getenv("MAX_STATE_DIR")
     if cfg.state_root == "":
@@ -454,7 +455,10 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 '{"ev":"retry","ts":' + String(bindings.now_seconds())
                 + ',"attempt":' + String(attempt) + ',"http":' + String(code) + "}",
             )
-            bindings.sleep_ms(1000 * (1 << (attempt - 1)))
+            var backoff_ms = 1000 * (1 << min(attempt - 1, 16))
+            var left_ms = (deadline - bindings.now_seconds()) * 1000
+            if left_ms > 0:
+                bindings.sleep_ms(min(backoff_ms, left_ms))
             req_ms = (deadline - bindings.now_seconds()) * 1000
             r = bindings.http_post(
                 cfg.base_url + "/chat/completions", build_body(cfg, history),
@@ -467,7 +471,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             bindings.eprint("[max] --max-seconds exceeded")
             exit_code = 2
             break
-        if code == 400 and is_ctx_error(resp):
+        if not cfg.bare and code == 400 and is_ctx_error(resp):
             # context overflow: clear old tool output and retry this request once
             var (nh, cleared) = compact_history(history, cfg.compact_keep)
             if cleared > 0:
@@ -696,9 +700,13 @@ def main() raises:
     var st = TurnStats()
     st.start_s = bindings.now_seconds()
 
-    # session dir: create it; on failure state features quietly turn off
+    # session dir: create it; on failure state features turn off. The
+    # journal path clears too unless it is a --resume file elsewhere.
     if cfg.session_dir != "" and not bindings.mkdir_p(cfg.session_dir):
         cfg.session_dir = ""
+        if cfg.resume_file == "":
+            cfg.journal_path = ""
+        bindings.eprint("[max] cannot create session dir; journal/status off")
 
     var system = SYSTEM_PROMPT
     var repo_docs = String("")
