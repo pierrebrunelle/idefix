@@ -2,9 +2,11 @@
 # score = diff_lines vs .orig/  +  100 per failed edge probe.
 # GATE first: main test suite failing -> 9999 (no fix, no score).
 cd "$(dirname "$0")"
-if ! python3 test_calc.py > /dev/null 2>&1; then
+test_out=$(python3 test_calc.py 2>&1) || {
+  echo "gate: test suite failing:" >&2
+  echo "$test_out" | tail -8 >&2
   echo 9999; exit 0
-fi
+}
 # resilience probe: adversarial edge cases beyond the test suite
 edge_fails=$(python3 - <<'PY' 2>/dev/null
 from calc import pct_change
@@ -21,4 +23,5 @@ print(fails)
 PY
 )
 lines=$(diff -u .orig/calc.py calc.py | grep -cE '^[+-][^+-]')
+[ "${edge_fails:-5}" != "0" ] && echo "edge probe: ${edge_fails:-5} failures" >&2
 python3 -c "print(${lines:-9999} + 100*${edge_fails:-5})"

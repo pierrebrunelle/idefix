@@ -1,0 +1,9 @@
+diff --git a/stats.py b/stats.py
+index 87d900c..bee7636 100644
+--- a/stats.py
++++ b/stats.py
+@@ -1,2 +1,4 @@
+ def average(nums):
++    if not nums:
++        return 0.0
+     return sum(nums) / len(nums)

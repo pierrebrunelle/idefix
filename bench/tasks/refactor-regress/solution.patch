@@ -1,0 +1,25 @@
+diff --git a/strings.py b/strings.py
+new file mode 100644
+index 0000000..808cce3
+--- /dev/null
++++ b/strings.py
+@@ -0,0 +1,5 @@
++def slugify(s):
++    return s.lower().replace(" ", "-")
++
++def title_case(s):
++    return " ".join(w.capitalize() for w in s.split())
+diff --git a/utils.py b/utils.py
+index c14232c..60a0673 100644
+--- a/utils.py
++++ b/utils.py
+@@ -1,8 +1,4 @@
+-def slugify(s):
+-    return s.lower().replace(" ", "-")
+-
+-def title_case(s):
+-    return " ".join(w.capitalize() for w in s.split())
++from strings import slugify, title_case
+ 
+ def clamp(x, lo, hi):
+     return max(lo, min(hi, x))

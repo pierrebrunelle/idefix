@@ -29,7 +29,9 @@ better() {  # better NEW BEST -> exit 0 if new improves on best
   awk -v n="$1" -v b="$2" -v d="$DIR" 'BEGIN{exit !(d=="min" ? n<b : n>b)}'
 }
 
-score() { ./score.sh 2>/dev/null | tail -1; }
+# stderr is the diagnostics channel: the score is stdout's last line, the
+# *reason* for it goes to logs/score.err for the next iteration's prompt.
+score() { ./score.sh 2>logs/score.err | tail -1; }
 
 best="$(score)"
 [ -n "$best" ] || { echo "score.sh printed no baseline score"; exit 1; }
@@ -42,13 +44,18 @@ for i in $(seq 1 "$ITERS"); do
     --max-requests "${OPT_MAX_REQ:-15}" --max-seconds "${OPT_SECONDS:-300}" \
     "Iteration $i. Current best score: $best. Prior attempts (iter score best verdict files):
 $(tail -20 experiments.tsv)
+Last scorer output: $(tail -8 logs/score.err 2>/dev/null)
 Improve the artifact, then run ./score.sh yourself to see the score." \
     > "logs/iter-$i.log" 2>&1
-  new="$(score)"
-  # capture the attempt's identity before the verdict: a DROP reset erases
-  # the diff, and dropped mutations are exactly the history worth keeping
+  # capture the attempt's identity before scoring: recording first keeps a
+  # score.sh/program.md tamper visible in `what`, and a DROP reset would
+  # erase the diff — dropped mutations are the history worth keeping
   git add -A
   what="$(git diff --cached --name-status HEAD -- . ':(exclude)logs' ':(exclude)experiments.tsv' | tr '\t' ' ' | paste -sd, -)"
+  # the scorer and the rules are not artifacts: restore them before scoring
+  # so an agent that edits its own oracle cannot buy a KEEP
+  git checkout -q HEAD -- score.sh program.md
+  new="$(score)"
   if [ -n "$new" ] && better "$new" "$best"; then
     verdict="KEEP"; best="$new"
     git commit -qm "iter $i: KEEP score=$new"

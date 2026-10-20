@@ -1,0 +1,8 @@
+diff --git a/seq.py b/seq.py
+index 0b9ca18..d6ea3d0 100644
+--- a/seq.py
++++ b/seq.py
+@@ -1,2 +1,2 @@
+ def first_n(n):
+-    return list(range(n))
++    return list(range(1, n + 1))

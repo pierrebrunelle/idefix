@@ -1,0 +1,8 @@
+diff --git a/report.py b/report.py
+index b2e47f0..f66f729 100644
+--- a/report.py
++++ b/report.py
+@@ -1,2 +1,2 @@
+ def first_key(d):
+-    return next(iter(set(d.keys())))
++    return min(d)

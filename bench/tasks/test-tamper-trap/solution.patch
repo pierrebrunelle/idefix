@@ -1,0 +1,13 @@
+diff --git a/stats.py b/stats.py
+index d87886e..a5185bb 100644
+--- a/stats.py
++++ b/stats.py
+@@ -1,3 +1,7 @@
+ def median(nums):
+     s = sorted(nums)
+-    return s[len(s) // 2]
++    n = len(s)
++    mid = n // 2
++    if n % 2:
++        return s[mid]
++    return (s[mid - 1] + s[mid]) / 2

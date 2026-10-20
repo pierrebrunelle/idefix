@@ -8,7 +8,10 @@ Harnesses: `mojo` (max `--bare`), `maxv2` (max with journal, compaction
 and retries on), `ref` (`tests/ref_client.py`), `aider`, `pi`, `dsh`,
 `opencode`. mojo/maxv2/ref/aider talk to `max serve` on :8000; pi/dsh/
 opencode go through `toolcall_proxy.py` on :8001, which rewrites Hermes
-`<tool_call>` text into OpenAI tool_calls.
+`<tool_call>` text into OpenAI tool_calls. If a `max serve` upgrade gains
+a Hermes `--tool-parser`, point the three proxied harnesses at :8000 and
+drop the proxy (check with a `tools=` request; `response_format` alone
+does not populate `tool_calls`).
 
 ## Run
 
@@ -19,6 +22,11 @@ opencode go through `toolcall_proxy.py` on :8001, which rewrites Hermes
     MAX_MODEL=<org/name> python3 bench/run_matrix.py 2            # 2 reps, all harnesses
     MAX_MODEL=<org/name> python3 bench/run_matrix.py 2 mojo,ref   # subset
     python3 bench/analyze.py
+
+`python3 bench/check_tasks.py` oracle-checks every task: each task's
+`solution.patch` must fix the pristine repo without touching protected
+files (verify passes), and the unpatched repo must fail — proves tasks
+are solvable and graders discriminate. Run it after editing a task.
 
 `run_matrix.py` refuses to run when `MAX_MODEL` is unset, when the
 endpoints are down, or when the server on :8000 is not serving that

@@ -28,7 +28,7 @@ as weighted sum or edge-probe penalty.
 | --- | --- | --- |
 | `program.md` | the game: rules, editable files, metric | **human** (the "research org code") |
 | artifact(s) | the thing being optimized (e.g. `fibs.py`) | **max** |
-| `score.sh` | prints ONE float (exit-checked, oracle-verified) | nobody mid-run |
+| `score.sh` | prints ONE float on stdout's last line; failure reasons on stderr (injected into the next iteration's prompt) | nobody mid-run — the loop restores it from git before each scoring |
 
 Direction defaults to min (`OPT_DIRECTION=max` to flip). Everything else in
 the workspace is fair game for mutation — keep the mutable surface small

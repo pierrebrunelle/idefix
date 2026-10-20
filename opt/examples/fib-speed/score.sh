@@ -11,9 +11,12 @@ EOF
 )
 out=$(cd "$(dirname "$0")" && /usr/bin/time -p python3 fibs.py 2>/tmp/fib-time.$$ | head -1)
 secs=$(awk '/^real/ {print $2}' /tmp/fib-time.$$)
-rm -f /tmp/fib-time.$$
 if [ "$out" != "$expected" ]; then
+  { echo "expected '$expected', got '${out:-<no output>}'"
+    grep -vE '^(real|user|sys)' /tmp/fib-time.$$ | tail -5; } >&2
+  rm -f /tmp/fib-time.$$
   echo 9999
 else
+  rm -f /tmp/fib-time.$$
   echo "${secs:-9999}"
 fi
