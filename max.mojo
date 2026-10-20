@@ -81,7 +81,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: max --repo DIR [flags] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command"
+    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command"
 
 
 def read_file(path: String) raises -> String:
@@ -196,6 +196,13 @@ def parse_args() raises -> Config:
         elif arg == "-h" or arg == "--help":
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
+        elif arg == "--":
+            i += 1
+            while i < len(a):
+                positional.append(String(a[i]))
+                i += 1
+        elif arg.find("-") == 0:
+            die("unknown flag: " + arg + " (use -- to pass a task starting with -)", 64)
         else:
             positional.append(arg)
         i += 1
@@ -418,8 +425,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var deadline = bindings.now_seconds() + cfg.max_seconds
     var exit_code = 0
     var final = ""
-    var i = 0
-    while i < cfg.max_requests:
+    while st.requests < cfg.max_requests:
         if bindings.now_seconds() > deadline:
             bindings.eprint("[max] --max-seconds exceeded")
             exit_code = 2
@@ -434,7 +440,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
         var resp = r[1]
         vlog(cfg, "request " + String(st.requests) + " -> http " + String(code))
         var attempt = 0
-        while (code == 0 or code >= 500) and attempt < cfg.retries:
+        while (code == 0 or code >= 500) and attempt < cfg.retries and st.requests < cfg.max_requests:
             # transport error or server 5xx: backoff retry for long runs
             if bindings.now_seconds() > deadline:
                 break
@@ -472,14 +478,15 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     '{"ev":"compact","ts":' + String(bindings.now_seconds())
                     + ',"cleared":' + String(cleared) + "}",
                 )
-                req_ms = (deadline - bindings.now_seconds()) * 1000
-                r = bindings.http_post(
-                    cfg.base_url + "/chat/completions", build_body(cfg, history),
-                    cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
-                )
-                st.requests += 1
-                code = r[0]
-                resp = r[1]
+                if st.requests < cfg.max_requests:
+                    req_ms = (deadline - bindings.now_seconds()) * 1000
+                    r = bindings.http_post(
+                        cfg.base_url + "/chat/completions", build_body(cfg, history),
+                        cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
+                    )
+                    st.requests += 1
+                    code = r[0]
+                    resp = r[1]
         if code != 200:
             bindings.eprint("[max] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
             exit_code = 3
@@ -649,7 +656,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     '{"ev":"compact","ts":' + String(bindings.now_seconds())
                     + ',"cleared":' + String(cleared) + "}",
                 )
-        i += 1
     else:
         exit_code = 2
     return final, exit_code

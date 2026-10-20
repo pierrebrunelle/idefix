@@ -35,8 +35,8 @@ Note: our binary is `max`; Modular's MAX CLI is also `max`. Point
 printf 'fix\nadd tests\n' | ./max --repo DIR   # piped tasks share one session
 ```
 
-REPL: `/reset` clears context, `/quit` or Ctrl-D exits, `!cmd` runs a
-shell command locally without a model request.
+REPL: `/reset` clears context, `/quit` or `/exit` or Ctrl-D exits, `!cmd`
+runs a shell command locally without a model request.
 
 `AGENTS.md`/`CLAUDE.md` in the repo root load into the system prompt.
 `--instructions FILE` appends more.

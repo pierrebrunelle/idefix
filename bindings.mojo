@@ -197,7 +197,12 @@ def cjson_str(item: raw_ptr) -> String:
 
 
 def cjson_num(item: raw_ptr) -> Float64:
-    return external_call["cJSON_GetNumberValue", Float64](item)
+    # cJSON_GetNumberValue returns NaN for missing/non-number items; callers
+    # Int() the result, so give them 0 instead of NaN.
+    var v = external_call["cJSON_GetNumberValue", Float64](item)
+    if v != v:
+        return 0.0
+    return v
 
 
 def cjson_print(item: raw_ptr) -> String:
@@ -298,8 +303,11 @@ def markup_calls_json(content: String) -> String:
                     argstr = unq^
         if name == "":
             continue
-        if argstr == "" or argstr.find("{") != 0:
-            argstr = '{"command":' + json_quote(argstr) + "}"
+        var trimmed = String(argstr.strip())
+        if trimmed.find("{") == 0:
+            argstr = trimmed
+        else:
+            argstr = '{"command":' + json_quote(trimmed) + "}"
         if out != "":
             out += ","
         out += (

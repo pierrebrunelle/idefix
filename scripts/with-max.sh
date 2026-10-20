@@ -23,18 +23,19 @@ if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
     fi
     "$MAXCLI" "${serve_args[@]}" >"$LOG" 2>&1 &
     started=$!
-    trap 'kill $started 2>/dev/null' EXIT
+    keep_log=""
+    trap 'kill "$started" 2>/dev/null; wait "$started" 2>/dev/null; [ -n "$LOG" ] && [ -z "$keep_log" ] && rm -f "$LOG"' EXIT
     for _ in $(seq 1 150); do
         curl -sf -m 2 "$BASE/models" >/dev/null && break
         sleep 2
     done
     curl -sf -m 2 "$BASE/models" >/dev/null || {
+        keep_log=1
         echo "with-max: server did not come up; see $LOG" >&2
         exit 1
     }
 fi
 ./max "$@"
 rc=$?
-[ -n "$LOG" ] && rm -f "$LOG"
-# Plain exit so the EXIT trap fires: a server we started gets killed here.
+# Plain exit so the EXIT trap fires: kill the server we started, drop its log.
 exit "$rc"

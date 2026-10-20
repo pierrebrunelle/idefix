@@ -212,4 +212,16 @@ check "binout answer" "Done." "$out"
 grep -q "STUB tool json ok: True" /tmp/stub_binout.log && echo "PASS binout json" || { echo "FAIL binout json"; cat /tmp/stub_binout.log; FAIL=1; }
 grep -q "$(printf '\357\277\275')" /tmp/stub_binout.log && echo "PASS binout sanitized" || { echo "FAIL binout sanitized"; FAIL=1; }
 
+# 30. unknown flags exit 64; -- gates a task starting with -
+out=$(./max --repo . --retriess 2>&1); rc=$?
+check "unknown flag exit" 64 "$rc"
+echo "$out" | grep -q "unknown flag" && echo "PASS unknown flag msg" || { echo "FAIL unknown flag msg: $out"; FAIL=1; }
+out=$(run_mode normal ./max --repo . -- "-weird-task" 2>/dev/null); rc=$?
+check "dashdash task exit" 0 "$rc"
+check "dashdash answer" "Done." "$out"
+
+# 31. --max-requests counts retries: cap 1 + flaky 500 -> no retry, exit 3
+out=$(run_mode flaky ./max --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
+check "cap counts retries exit" 3 "$rc"
+
 exit $FAIL
