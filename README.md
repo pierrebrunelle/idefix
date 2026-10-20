@@ -6,6 +6,34 @@ model's `bash(command)` tool calls inside a repo, and prints the answer.
 No Python, no runtime deps beyond `libcurl` — the bundle (~3 MB with Mojo
 dylibs) runs under `env -i`. Peak RSS on a real run is ~16 MB.
 
+## The bet
+
+Agent capability ≈ model × harness. Weights are the server's problem;
+the harness — prompt, tools, memory, loop discipline — is ours, and the
+smallest one that closes the loop (task → tool calls → bounded shell →
+answer) captures most of the value. So the optimization target is:
+
+                verified improvements
+    maximize  ─────────────────────────
+              tokens × wall-s × mechanism
+
+- **Verified improvement per unit of mechanism.** A feature ships when
+  it survives a bench measurement or names the failure it prevents.
+  `bench/` is the ledger; `bench/check_tasks.py` proves the ledger's
+  tasks are solvable before a row is trusted.
+- **Cost per iteration.** `opt/` runs max as an optimization engine —
+  mutate → score → keep/discard, hundreds of times, unattended. At
+  ~16 MB RSS and instant startup, the model is the bottleneck, never
+  the harness.
+- **Failure modes you can enumerate.** One bash tool, one endpoint,
+  an append-only journal. "Not a sandbox" is documented, not patched
+  over — the safe pattern is shipped (`with-max.sh`, tmpdir runs), not
+  implied.
+
+The working rule is subtraction: when two mechanisms carry the same
+guarantee, keep the one with fewer states. Reviews of this repo delete
+code more often than they add it.
+
 ## Quickstart
 
 ```bash
