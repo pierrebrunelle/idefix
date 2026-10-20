@@ -22,22 +22,33 @@ INFRA_RE = re.compile(r"CURL_ERROR:(?!28\b)|InternalServerError|Connection\s+err
 def mark_infra(rows, logsdir):
     n = 0
     for r in rows:
-        path = os.path.join(logsdir, f"{r['client']}-{r['task']}-{r['rep']}.log")
-        try:
-            with open(path, errors="replace") as f:
-                tail = f.readlines()[-15:]
-        except OSError:
-            continue
-        if r["pass"] or not any(INFRA_RE.search(l) for l in tail):
+        name = f"{r['client']}-{r['task']}-{r['rep']}.log"
+        if r.get("run_id"):
+            # logs are namespaced by run_id so batches never share a file
+            paths = [os.path.join(logsdir, r["run_id"], name)]
+        else:
+            # legacy rows predate run_id: their logs lived in the dir for
+            # their model or in the shared bench/logs
+            paths = [os.path.join(logsdir, name),
+                     os.path.join(LOGS_BASE, "logs", name)]
+        tail = None
+        for p in paths:
+            try:
+                with open(p, errors="replace") as f:
+                    tail = f.readlines()[-15:]
+                break
+            except OSError:
+                pass
+        if tail is None or r["pass"] or not any(INFRA_RE.search(l) for l in tail):
             continue
         r["infra"] = True
         n += 1
     return n
 
-COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa",
-          "pi": "#2dd4bf", "dsh": "#f778ba"}
-NAMES = {"mojo": "max", "ref": "python-loop", "aider": "aider", "opencode": "opencode",
-         "pi": "pi", "dsh": "deepseek-harness"}
+COLORS = {"mojo": "#4f8ff7", "maxv2": "#8fd14f", "ref": "#9a9a9a", "aider": "#f7a24f",
+          "opencode": "#a78bfa", "pi": "#2dd4bf", "dsh": "#f778ba"}
+NAMES = {"mojo": "max", "maxv2": "max-v2", "ref": "python-loop", "aider": "aider",
+         "opencode": "opencode", "pi": "pi", "dsh": "deepseek-harness"}
 BG, FG, MUT, GRID = "#0d1117", "#e6edf3", "#8b949e", "#21262d"
 random.seed(7)
 
@@ -125,11 +136,26 @@ def chart_scatter(title, points, w=760, h=420):
 
 
 def chart_grouped(title, groups, series, data, ymax, unit="", w=760):
-    row_h, pad_t, pad_l, pad_r = 34, 56, 130, 110
+    pad_t, pad_l, pad_r = 56, 130, 110
     n_s = len(series)
-    h = pad_t + len(groups) * (row_h + 10) + 30
+    if not n_s or not groups:
+        return "\n".join(svg_head(w, 90, title) + ["</svg>"])
+    # row height scales with series count so bars never drop below 4px
+    bar_h = max(4, 26 // n_s)
+    row_h = n_s * (bar_h + 4)
+    # pack the legend into lines under the chart; item width tracks label
+    # length so any series count fits on the canvas
+    items = [(s, NAMES.get(s, s)) for s in series]
+    llines, lx = [[]], pad_l
+    for s, lbl in items:
+        iw = 14 + 7 * len(lbl) + 14
+        if lx + iw > w - 10 and llines[-1]:
+            llines.append([])
+            lx = pad_l
+        llines[-1].append((s, lbl, iw))
+        lx += iw
+    h = pad_t + len(groups) * (row_h + 10) + 30 + 16 * len(llines)
     plot_w = w - pad_l - pad_r
-    bar_h = row_h // n_s - 4
     out = svg_head(w, h, title)
     for gi, g in enumerate(groups):
         y0 = pad_t + gi * (row_h + 10)
@@ -141,11 +167,15 @@ def chart_grouped(title, groups, series, data, ymax, unit="", w=760):
                 continue
             bw = max(1, plot_w * v / ymax)
             out.append(f'<rect x="{pad_l}" y="{y}" width="{bw:.0f}" height="{bar_h}" rx="2" fill="{COLORS.get(s, MUT)}"/>')
-            out.append(f'<text x="{pad_l + bw + 6:.0f}" y="{y + bar_h - 2}" fill="{MUT}">{v:g}{unit}</text>')
-    lx, ly = w - 200, 14
-    for si, s in enumerate(series):
-        out.append(f'<rect x="{lx + si * 90}" y="{ly}" width="10" height="10" fill="{COLORS.get(s, MUT)}"/>')
-        out.append(f'<text x="{lx + si * 90 + 14}" y="{ly + 9}" fill="{MUT}" font-size="11">{esc(NAMES.get(s, s))}</text>')
+            out.append(f'<text x="{pad_l + bw + 6:.0f}" y="{y + max(bar_h - 2, bar_h // 2 + 4)}" fill="{MUT}">{v:g}{unit}</text>')
+    ly = h - 16 * len(llines) - 4
+    for line in llines:
+        lx = pad_l
+        for s, lbl, iw in line:
+            out.append(f'<rect x="{lx}" y="{ly}" width="10" height="10" fill="{COLORS.get(s, MUT)}"/>')
+            out.append(f'<text x="{lx + 14}" y="{ly + 9}" fill="{MUT}" font-size="11">{esc(lbl)}</text>')
+            lx += iw
+        ly += 16
     out.append("</svg>")
     return "\n".join(out)
 
@@ -157,8 +187,11 @@ def median(v):
 
 def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     tasks = sorted({r["task"] for r in valid_rows})
-    order = ["mojo", "ref", "aider", "pi", "dsh", "opencode"]
-    clients = [c for c in order if any(r["client"] == c for r in all_rows)]
+    order = ["mojo", "maxv2", "ref", "aider", "pi", "dsh", "opencode"]
+    # clients come from valid rows: a harness with no valid rows has no
+    # measurable column, and deriving from valid_rows keeps len(per[c]) > 0
+    clients = ([c for c in order if any(r["client"] == c for r in valid_rows)]
+               + sorted({r["client"] for r in valid_rows} - set(order)))
     os.makedirs(cdir, exist_ok=True)
 
     by = defaultdict(list)
@@ -238,7 +271,10 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
               "  deepseek-harness use native OpenAI tool calling, which this MAX serve",
               "  build cannot parse (no hermes tool parser), so they run through",
               "  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into",
-              "  structured tool_calls. Wall times include the proxy hop."]
+              "  structured tool_calls. Wall times include the proxy hop.",
+              "- max-v2 is the same max binary without --bare: journal,",
+              "  compaction and retries stay on, so it measures the shipped",
+              "  product rather than the raw wire protocol."]
     if "dsh" in clients:
         lines += [
             "- deepseek-harness rows: the model reads the ~6k-token Cordis plugin system",
@@ -259,10 +295,10 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     lines.append("| harness | task | rep | pass | requests | commands | tokens | wall_s | rss_mb | exit |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
     for r in all_rows:
-        infra = " infra" if r.get("infra") else ""
+        flags = (" infra" if r.get("infra") else "") + (" tampered" if r.get("tampered") else "")
         lines.append(
             f"| {NAMES.get(r['client'], r['client'])} | {r['task']} | {r['rep']} | {int(r['pass'])} | "
-            f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']}{infra} |"
+            f"{r['requests']} | {r['commands']} | {r['prompt_tokens']} | {r['wall_s']} | {r['maxrss_mb']} | {r['exit']}{flags} |"
         )
     lines.append("")
     return lines
@@ -283,10 +319,9 @@ def main():
     for model in models:
         slug = re.sub(r"[^a-z0-9]+", "-", (model.split("/")[-1] or "model").lower()).strip("-") or "model"
         board = [r for r in rows if (r.get("model") or "") == model]
-        logsdir = os.path.join(LOGS_BASE, f"logs-{slug}")
-        if not os.path.isdir(logsdir):
-            logsdir = os.path.join(LOGS_BASE, "logs")
-        n_infra = mark_infra(board, logsdir)
+        n_infra = mark_infra(
+            board,
+            os.environ.get("BENCH_LOGS") or os.path.join(LOGS_BASE, f"logs-{slug}"))
         valid = [r for r in board if not r.get("infra")]
         lines += emit_board(
             valid, board,

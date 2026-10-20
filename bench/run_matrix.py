@@ -4,21 +4,32 @@
 Each run copies the task repo to a temp dir, runs the harness with a
 watchdog timeout, records pass/fail via the task's independent verify.sh,
 and captures the child process peak RSS via wait4 rusage.
+
+After each run, files matching the task's meta.json "protected" globs
+(default ["test_*"]) are compared against the task's pristine repo/; a
+changed, deleted or added protected file marks the row tampered and fails
+it. The protected list is appended to the task prompt so the constraint
+is never invisible. Rows carry run_id, ts and bench_version; logs land
+under logs-<model>/<run_id>/.
 """
+import fnmatch
+import hashlib
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TASKS_DIR = os.path.join(ROOT, "bench", "tasks")
 RESULTS = os.environ.get("BENCH_RESULTS", os.path.join(ROOT, "bench", "results.jsonl"))
-LOGS = os.environ.get("BENCH_LOGS", os.path.join(ROOT, "bench", "logs"))
+GEN_DIR = os.path.join(ROOT, "bench", ".generated")
 TIMEOUT_S = int(os.environ.get("BENCH_TIMEOUT", "420"))
 AGENT_MAX_SECONDS = TIMEOUT_S - 20  # inner budget must fire before watchdog
 MODEL = os.environ.get("MAX_MODEL", "")
@@ -26,22 +37,42 @@ BASE = os.environ.get("MAX_BASE_URL", "http://127.0.0.1:8000/v1")
 # pi and dsh use native OpenAI tool calling; bench/toolcall_proxy.py
 # translates Qwen's Hermes <tool_call> text into structured tool_calls.
 TOOLCALL_BASE = os.environ.get("BENCH_TOOLCALL_BASE", "http://127.0.0.1:8001/v1")
+BENCH_VERSION = 2
+TEMPERATURE = 0.6
+DEFAULT_PROTECTED = ["test_*"]
+USAGE = ("usage: run_matrix.py [reps] [harness,...]\n"
+         "  env: MAX_MODEL (required), MAX_BASE_URL, BENCH_TOOLCALL_BASE,\n"
+         "       BENCH_RESULTS, BENCH_LOGS, BENCH_TIMEOUT, BENCH_TASKS")
 
 
-def mojo_cmd(repo, task_text, transcript):
+def model_slug():
+    return re.sub(r"[^a-z0-9]+", "-", (MODEL.split("/")[-1] or "model").lower()).strip("-") or "model"
+
+
+LOGS = os.environ.get("BENCH_LOGS", os.path.join(ROOT, "bench", f"logs-{model_slug()}"))
+
+
+def mojo_cmd(repo, task_text, transcript, globs):
     return [
         os.path.join(ROOT, "max"),
         "--repo", repo,
         "--max-requests", "15",
         "--max-seconds", str(AGENT_MAX_SECONDS),
-        "--temperature", "0.6",
+        "--temperature", str(TEMPERATURE),
         "--transcript", transcript,
         "--bare",  # disable product features so the wire protocol matches ref_client
         task_text,
     ], {}
 
 
-def ref_cmd(repo, task_text, transcript):
+def maxv2_cmd(repo, task_text, transcript, globs):
+    # same arm as mojo minus --bare: journal, compaction and retries stay on
+    cmd, env = mojo_cmd(repo, task_text, transcript, globs)
+    cmd.remove("--bare")
+    return cmd, dict(env, MAX_STATE_DIR=os.path.join(repo, ".max-state"))
+
+
+def ref_cmd(repo, task_text, transcript, globs):
     return [
         sys.executable,
         os.path.join(ROOT, "tests", "ref_client.py"),
@@ -50,18 +81,24 @@ def ref_cmd(repo, task_text, transcript):
     ], {}
 
 
-def aider_cmd(repo, task_text, transcript):
-    # source files editable, test files read-only so the tests cannot be gamed
+def aider_cmd(repo, task_text, transcript, globs):
+    # task-protected files are read-only so they cannot be gamed
     editable, readonly = [], []
-    for f in sorted(os.listdir(repo)):
-        p = os.path.join(repo, f)
-        if not os.path.isfile(p):
-            continue
-        (readonly if f.startswith("test_") else editable).append(p)
+    for dirpath, _, files in os.walk(repo):
+        for f in files:
+            p = os.path.join(dirpath, f)
+            rel = os.path.relpath(p, repo)
+            if protected_matches(rel, f, globs):
+                readonly.append(p)
+            else:
+                editable.append(p)
+    editable.sort()
+    readonly.sort()
     cmd = [
-        "uv", "tool", "run", "--python", "3.12", "--from", "aider-chat", "aider",
+        "uv", "tool", "run", "--python", "3.12", "--from", "aider-chat==0.86.2", "aider",
         "--model", f"openai/{MODEL}",
         "--openai-api-base", BASE,
+        "--model-settings-file", os.path.join(GEN_DIR, "aider-model-settings.yml"),
         "--yes", "--no-git", "--no-show-model-warnings", "--no-pretty",
     ]
     cmd += sum((["--file", f] for f in editable), [])
@@ -70,28 +107,28 @@ def aider_cmd(repo, task_text, transcript):
     return cmd, {"OPENAI_API_KEY": "dummy"}
 
 
-def pi_cmd(repo, task_text, transcript):
+def pi_cmd(repo, task_text, transcript, globs):
     return [
         "pi", "-p",
         "--model", f"max/{MODEL}",
         "--mode", "json",
         "--no-context-files", "--no-extensions", "--no-mcp", "--no-session",
         task_text,
-    ], {"PI_CODING_AGENT_DIR": os.path.join(ROOT, "bench", "pi-agent")}
+    ], {"PI_CODING_AGENT_DIR": os.path.join(GEN_DIR, "pi-agent")}
 
 
-def opencode_cmd(repo, task_text, transcript):
+def opencode_cmd(repo, task_text, transcript, globs):
     return [
         "opencode", "run", "--format", "json",
         "-m", f"max/{MODEL}",
         task_text,
-    ], {"OPENCODE_CONFIG": os.path.join(ROOT, "bench", "opencode.json")}
+    ], {"OPENCODE_CONFIG": os.path.join(GEN_DIR, "opencode.json")}
 
 
-def dsh_cmd(repo, task_text, transcript):
+def dsh_cmd(repo, task_text, transcript, globs):
     return [
         "dsh", "--profile", "headless",
-        "--patch", os.path.join(ROOT, "bench", "dsh-max.patch.yml"),
+        "--patch", os.path.join(GEN_DIR, "dsh-max.patch.yml"),
         "--json",
         task_text,
     ], {
@@ -100,40 +137,161 @@ def dsh_cmd(repo, task_text, transcript):
     }
 
 
-HARNESS = {"mojo": mojo_cmd, "ref": ref_cmd, "aider": aider_cmd, "pi": pi_cmd,
-           "dsh": dsh_cmd, "opencode": opencode_cmd}
+HARNESS = {"mojo": mojo_cmd, "maxv2": maxv2_cmd, "ref": ref_cmd, "aider": aider_cmd,
+           "pi": pi_cmd, "dsh": dsh_cmd, "opencode": opencode_cmd}
 
 
-def configure_backends():
-    """Point the pi/dsh provider configs at MODEL before the matrix runs."""
-    pj = os.path.join(ROOT, "bench", "pi-agent", "models.json")
-    cfg = json.load(open(pj))
-    cfg["providers"]["max"]["models"] = [{"id": MODEL}]
-    with open(pj, "w") as f:
-        json.dump(cfg, f, indent=2)
-        f.write("\n")
-    dy = os.path.join(ROOT, "bench", "dsh-max.patch.yml")
-    txt = open(dy).read()
-    txt = re.sub(r"(\n\s+- id: ).+", rf"\g<1>{MODEL}", txt)
-    txt = re.sub(r"(    model: ).+", rf"\g<1>{MODEL}", txt)
-    with open(dy, "w") as f:
-        f.write(txt)
-    oc = os.path.join(ROOT, "bench", "opencode.json")
-    ocfg = json.load(open(oc))
-    ocfg["provider"]["max"]["models"] = {MODEL: {}}
-    with open(oc, "w") as f:
-        json.dump(ocfg, f, indent=2)
-        f.write("\n")
+def configure_backends(harnesses):
+    """Render provider configs for MODEL into bench/.generated/ (gitignored);
+    committed templates stay untouched and unpinned."""
+    os.makedirs(GEN_DIR, exist_ok=True)
+    if "aider" in harnesses:
+        # aider/extra_params lands verbatim in litellm.completion for all models
+        with open(os.path.join(GEN_DIR, "aider-model-settings.yml"), "w") as f:
+            f.write(f"- name: aider/extra_params\n  extra_params:\n    temperature: {TEMPERATURE}\n")
+    if "pi" in harnesses:
+        # copy the agent dir (auth.json, models-store.json), rewrite models.json
+        src = os.path.join(ROOT, "bench", "pi-agent")
+        dst = os.path.join(GEN_DIR, "pi-agent")
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+        pj = os.path.join(dst, "models.json")
+        with open(pj) as f:
+            cfg = json.load(f)
+        cfg["providers"]["max"]["models"] = [
+            {"id": MODEL, "samplingParams": {"temperature": TEMPERATURE}}]
+        with open(pj, "w") as f:
+            json.dump(cfg, f, indent=2)
+            f.write("\n")
+    if "dsh" in harnesses:
+        # patch overlay; samplingParams lives in the committed template. The
+        # patterns anchor on the indented model entries so column-0 patch ids
+        # can never match, even across a blank line.
+        txt = open(os.path.join(ROOT, "bench", "dsh-max.patch.yml")).read()
+        txt = re.sub(r"(\n +- id: ).+", rf"\g<1>{MODEL}", txt)
+        txt = re.sub(r"(\n    model: ).+", rf"\g<1>{MODEL}", txt)
+        with open(os.path.join(GEN_DIR, "dsh-max.patch.yml"), "w") as f:
+            f.write(txt)
+    if "opencode" in harnesses:
+        oc = json.load(open(os.path.join(ROOT, "bench", "opencode.json")))
+        # model-entry "temperature" is a boolean capability flag, not a value;
+        # the sampling value belongs under options (opencode rejects a float)
+        oc["provider"]["max"]["models"] = {
+            MODEL: {"name": MODEL.split("/")[-1], "temperature": True,
+                    "options": {"temperature": TEMPERATURE}}}
+        with open(os.path.join(GEN_DIR, "opencode.json"), "w") as f:
+            json.dump(oc, f, indent=2)
+            f.write("\n")
 
 
-def run_harness(name, repo, task_text, transcript_path):
-    cmd, extra_env = HARNESS[name](repo, task_text, transcript_path)
+def preflight(harnesses):
+    """Abort before the loop when a required endpoint is unreachable or
+    the MAX server is not serving MODEL."""
+    checks = [("MAX server", BASE, True)]
+    if {"pi", "dsh", "opencode"} & set(harnesses):
+        checks.append(("toolcall_proxy", TOOLCALL_BASE, False))
+    problems = []
+    for label, base, check_model in checks:
+        try:
+            data = json.loads(urllib.request.urlopen(base + "/models", timeout=5).read())
+        except Exception:
+            problems.append(f"{label} unreachable ({base}/models)")
+            continue
+        if check_model:
+            ids = [m.get("id") for m in data.get("data", [])]
+            if MODEL not in ids:
+                problems.append(f"{MODEL} not served (have: {', '.join(ids) or 'none'})")
+    if problems:
+        sys.exit("preflight failed:\n  " + "\n  ".join(problems))
+
+
+def make_run_id():
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except Exception:
+        sha = "nogit"
+    try:
+        if subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=ROOT, capture_output=True, text=True,
+        ).stdout.strip():
+            sha += "-dirty"
+    except Exception:
+        pass
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + sha
+
+
+def protected_globs(tdir):
+    meta = os.path.join(tdir, "meta.json")
+    if not os.path.exists(meta):
+        return list(DEFAULT_PROTECTED)
+    globs = json.load(open(meta)).get("protected", DEFAULT_PROTECTED)
+    if not isinstance(globs, list) or not all(isinstance(g, str) for g in globs):
+        sys.exit(f"{meta}: 'protected' must be a list of glob strings")
+    return globs
+
+
+def protected_matches(rel, name, globs):
+    # a glob matches a file's repo-relative path or its basename, so `test_*`
+    # covers nested test files and `data/*` covers everything under data/
+    return any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(name, g) for g in globs)
+
+
+def sha256_file(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def check_protected(repo, pristine, globs):
+    """Protected files changed, deleted, or added relative to the task's
+    pristine repo/ — additions count, so a new test_*.py or data/x.csv is
+    flagged. Dotdirs (.max-state) and the harness transcript are skipped."""
+    bad = []
+    for dirpath, _, files in os.walk(pristine):
+        for name in files:
+            rel = os.path.relpath(os.path.join(dirpath, name), pristine)
+            if not protected_matches(rel, name, globs):
+                continue
+            try:
+                got = sha256_file(os.path.join(repo, rel))
+            except OSError:
+                bad.append(rel + " (deleted)")
+                continue
+            if got != sha256_file(os.path.join(dirpath, name)):
+                bad.append(rel)
+    for dirpath, dirs, files in os.walk(repo):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
+        for name in files:
+            rel = os.path.relpath(os.path.join(dirpath, name), repo)
+            if rel == "transcript.json":
+                continue
+            if protected_matches(rel, name, globs) and not os.path.exists(
+                    os.path.join(pristine, rel)):
+                bad.append(rel + " (added)")
+    return bad
+
+
+def kill_group(pid, sig):
+    try:
+        os.killpg(pid, sig)
+    except OSError:
+        pass
+
+
+def run_harness(name, repo, task_text, transcript_path, globs):
+    cmd, extra_env = HARNESS[name](repo, task_text, transcript_path, globs)
     env = dict(os.environ, **extra_env)
     start = time.time()
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        env=env, cwd=repo,
-    )
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            env=env, cwd=repo, start_new_session=True,
+        )
+    except OSError as e:
+        return {"log": f"[bench] failed to launch {cmd[0]}: {e}\n",
+                "exit": 127, "wall_s": 0.0, "maxrss_mb": None, "timeout": False}
     chunks = []
 
     def drain():
@@ -143,7 +301,7 @@ def run_harness(name, repo, task_text, transcript_path):
                 break
             chunks.append(b)
 
-    t = threading.Thread(target=drain)
+    t = threading.Thread(target=drain, daemon=True)
     t.start()
     deadline = start + TIMEOUT_S
     killed = False
@@ -154,13 +312,23 @@ def run_harness(name, repo, task_text, transcript_path):
         if pid == proc.pid:
             break
         if time.time() > deadline:
-            # SIGTERM so the agent's shim can kill the child process group
-            proc.terminate()
-            pid, status, ru = os.wait4(proc.pid, 0)
             killed = True
+            kill_group(proc.pid, signal.SIGTERM)
+            for _ in range(50):  # ~5s grace for the group to exit
+                pid, status, ru = os.wait4(proc.pid, os.WNOHANG)
+                if pid == proc.pid:
+                    break
+                time.sleep(0.1)
+            # escalate whether or not the leader was reaped: group members
+            # may have ignored SIGTERM and still be running
+            kill_group(proc.pid, signal.SIGKILL)
+            if pid != proc.pid:
+                pid, status, ru = os.wait4(proc.pid, 0)
             break
         time.sleep(0.1)
-    t.join()
+    t.join(timeout=5)
+    if t.is_alive():
+        chunks.append(b"\n[bench] log truncated: output pipe still open\n")
     wall = time.time() - start
     return {
         "log": b"".join(chunks).decode("utf8", "replace"),
@@ -268,53 +436,91 @@ def stats_for(name, log):
 
 
 def main():
-    reps = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+    if len(sys.argv) > 3 or (len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help")):
+        sys.exit(USAGE)
+    try:
+        reps = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+    except ValueError:
+        sys.exit(USAGE)
+    if reps < 1:
+        sys.exit(USAGE)
     harnesses = sys.argv[2].split(",") if len(sys.argv) > 2 else list(HARNESS)
+    bad = [h for h in harnesses if h not in HARNESS]
+    if bad:
+        sys.exit(f"unknown harness: {', '.join(bad)} (have: {', '.join(HARNESS)})")
+    if not MODEL:
+        sys.exit("MAX_MODEL is not set (the model id to request, e.g. Qwen/Qwen3-14B)")
     tasks = sorted(d for d in os.listdir(TASKS_DIR) if os.path.isdir(os.path.join(TASKS_DIR, d)))
     if os.environ.get("BENCH_TASKS"):
         wanted = set(os.environ["BENCH_TASKS"].split(","))
         tasks = [t for t in tasks if t in wanted]
-    if {"pi", "dsh", "opencode"} & set(harnesses):
-        configure_backends()
-    os.makedirs(LOGS, exist_ok=True)
+    if not tasks:
+        sys.exit("no tasks matched" +
+                 (" BENCH_TASKS" if os.environ.get("BENCH_TASKS") else ""))
+    preflight(harnesses)
+    configure_backends(harnesses)
+    run_id = make_run_id()
+    log_dir = os.path.join(LOGS, run_id)
+    os.makedirs(log_dir, exist_ok=True)
+    n = 0
     for task in tasks:
         tdir = os.path.join(TASKS_DIR, task)
+        pristine = os.path.join(tdir, "repo")
         task_text = open(os.path.join(tdir, "task.txt")).read().strip()
+        globs = protected_globs(tdir)
+        if globs:
+            task_text += ("\n\nDo not modify or delete files matching these "
+                          "patterns: " + ", ".join(globs))
         for rep in range(1, reps + 1):
             for client in harnesses:
                 repo = tempfile.mkdtemp(prefix=f"bench-{task}-")
-                shutil.copytree(os.path.join(tdir, "repo"), repo, dirs_exist_ok=True)
+                shutil.copytree(pristine, repo, dirs_exist_ok=True)
                 transcript = os.path.join(repo, "transcript.json")
                 print(f"[{client} {task} rep{rep}] running...", flush=True)
-                r = run_harness(client, repo, task_text, transcript)
-                vf = subprocess.run(
-                    [os.path.join(tdir, "verify.sh"), repo],
-                    capture_output=True,
-                )
+                r = run_harness(client, repo, task_text, transcript, globs)
+                tampered = check_protected(repo, pristine, globs)
+                if tampered:
+                    r["log"] += "\n[bench] tamper guard: protected files changed: " \
+                        + ", ".join(tampered) + "\n"
+                try:
+                    vf = subprocess.run(
+                        [os.path.join(tdir, "verify.sh"), repo],
+                        capture_output=True, timeout=300,
+                    )
+                    verified = vf.returncode == 0
+                except subprocess.TimeoutExpired:
+                    verified = False
+                    r["log"] += "\n[bench] verify.sh timed out\n"
                 row = {
                     "client": client,
                     "task": task,
                     "rep": rep,
                     "model": MODEL,
-                    "pass": vf.returncode == 0,
+                    "run_id": run_id,
+                    "ts": int(time.time()),
+                    "bench_version": BENCH_VERSION,
+                    "pass": verified and not tampered,
                     **stats_for(client, r["log"]),
                     "wall_s": r["wall_s"],
                     "maxrss_mb": r["maxrss_mb"],
                     "exit": r["exit"],
                     "timeout": r["timeout"],
                 }
+                if tampered:
+                    row["tampered"] = True
                 with open(RESULTS, "a") as f:
                     f.write(json.dumps(row) + "\n")
-                with open(os.path.join(LOGS, f"{client}-{task}-{rep}.log"), "w") as f:
+                with open(os.path.join(log_dir, f"{client}-{task}-{rep}.log"), "w") as f:
                     f.write(r["log"])
                 if os.path.exists(transcript):
                     shutil.copy(
                         transcript,
-                        os.path.join(LOGS, f"{client}-{task}-{rep}.json"),
+                        os.path.join(log_dir, f"{client}-{task}-{rep}.json"),
                     )
                 print(f"  -> pass={row['pass']} reqs={row['requests']} wall={r['wall_s']}s rss={r['maxrss_mb']}MB", flush=True)
                 shutil.rmtree(repo, ignore_errors=True)
-    print("done")
+                n += 1
+    print(f"done: {n} rows")
 
 
 if __name__ == "__main__":

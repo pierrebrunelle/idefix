@@ -88,11 +88,13 @@ when isolation matters.
 
 ## Benchmark
 
-`bench/` runs the same 14-task suite against reference, aider, pi, dsh and
-opencode harnesses at the same endpoint (max runs with `--bare` for
-protocol parity): `python3 bench/run_matrix.py 2`, then
+`bench/` runs an 18-task suite against max (a `--bare` arm and a
+full-featured `maxv2` arm), a python reference loop, aider, pi, dsh and
+opencode at the same endpoint: `MAX_MODEL=<org/name> python3 bench/run_matrix.py 2`, then
 `python3 bench/analyze.py` writes `bench/RESULTS.md`. Headline on
-Qwen3-4B-Instruct-2507: 75% pass at ~16 MB peak RSS.
+Qwen3-4B-Instruct-2507 (the 6-task x 5-harness run in `bench/RESULTS.md`):
+75% pass at ~16 MB peak RSS. Setup and repro:
+`bench/README.md`.
 
 ## Install
 
