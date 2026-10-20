@@ -30,6 +30,7 @@ struct Config(Copyable):
     var max_seconds: Int
     var max_command_ms: Int
     var max_output_bytes: Int
+    var max_http_bytes: Int
     var max_prompt_tokens: Int
     var max_calls_per_response: Int
     var temperature: Float64
@@ -59,6 +60,7 @@ struct Config(Copyable):
         self.max_seconds = 1800
         self.max_command_ms = 120000
         self.max_output_bytes = 65536
+        self.max_http_bytes = 64 * 1024 * 1024
         self.max_prompt_tokens = 0
         self.max_calls_per_response = 8
         self.temperature = 0.0
@@ -127,8 +129,11 @@ def parse_args() raises -> Config:
             elif arg == "--transcript":
                 cfg.transcript = v
             elif arg == "--temperature":
-                cfg.temperature = Float64(v)
-                cfg.has_temperature = True
+                try:
+                    cfg.temperature = Float64(v)
+                    cfg.has_temperature = True
+                except:
+                    die("invalid value for --temperature: " + v, 64)
             elif arg == "--notify":
                 cfg.notify = v
             elif arg == "--state-dir":
@@ -137,26 +142,44 @@ def parse_args() raises -> Config:
                 cfg.resume_file = v
             else:
                 die("unhandled flag: " + arg, 64)
-        elif arg == "--max-requests":
-            i += 1; cfg.max_requests = Int(String(a[i]))
-        elif arg == "--max-seconds":
-            i += 1; cfg.max_seconds = Int(String(a[i]))
-        elif arg == "--max-command-seconds":
-            i += 1; cfg.max_command_ms = Int(String(a[i])) * 1000
-        elif arg == "--max-output-bytes":
-            i += 1; cfg.max_output_bytes = Int(String(a[i]))
-        elif arg == "--max-http-bytes":
-            i += 1  # accepted; curl cap is fixed at 64MB in bindings
-        elif arg == "--max-prompt-tokens":
-            i += 1; cfg.max_prompt_tokens = Int(String(a[i]))
-        elif arg == "--max-calls-per-response":
-            i += 1; cfg.max_calls_per_response = Int(String(a[i]))
-        elif arg == "--compact-at":
-            i += 1; cfg.compact_at = Int(String(a[i]))
-        elif arg == "--compact-keep":
-            i += 1; cfg.compact_keep = Int(String(a[i]))
-        elif arg == "--retries":
-            i += 1; cfg.retries = Int(String(a[i]))
+        elif (
+            arg == "--max-requests" or arg == "--max-seconds"
+            or arg == "--max-command-seconds" or arg == "--max-output-bytes"
+            or arg == "--max-http-bytes" or arg == "--max-prompt-tokens"
+            or arg == "--max-calls-per-response" or arg == "--compact-at"
+            or arg == "--compact-keep" or arg == "--retries"
+        ):
+            i += 1
+            if i >= len(a):
+                die("missing value for " + arg, 64)
+            var v = String(a[i])
+            var n = 0
+            try:
+                n = Int(v)
+            except:
+                die("invalid integer for " + arg + ": " + v, 64)
+            if n < 0:
+                die("invalid value for " + arg + ": " + v + " (must be >= 0)", 64)
+            if arg == "--max-requests":
+                cfg.max_requests = n
+            elif arg == "--max-seconds":
+                cfg.max_seconds = n
+            elif arg == "--max-command-seconds":
+                cfg.max_command_ms = n * 1000
+            elif arg == "--max-output-bytes":
+                cfg.max_output_bytes = n
+            elif arg == "--max-http-bytes":
+                cfg.max_http_bytes = n
+            elif arg == "--max-prompt-tokens":
+                cfg.max_prompt_tokens = n
+            elif arg == "--max-calls-per-response":
+                cfg.max_calls_per_response = n
+            elif arg == "--compact-at":
+                cfg.compact_at = n
+            elif arg == "--compact-keep":
+                cfg.compact_keep = n
+            else:
+                cfg.retries = n
         elif arg == "--no-loop-guard":
             cfg.loop_guard = False
         elif arg == "--continue":
@@ -392,7 +415,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             break
         var req_ms = (deadline - bindings.now_seconds()) * 1000
         var r = bindings.http_post(
-            cfg.base_url + "/chat/completions", build_body(cfg, history), cfg.bearer, max(req_ms, 1)
+            cfg.base_url + "/chat/completions", build_body(cfg, history),
+            cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
         )
         st.requests += 1
         var code = r[0]
@@ -416,7 +440,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             bindings.sleep_ms(1000 * (1 << (attempt - 1)))
             req_ms = (deadline - bindings.now_seconds()) * 1000
             r = bindings.http_post(
-                cfg.base_url + "/chat/completions", build_body(cfg, history), cfg.bearer, max(req_ms, 1)
+                cfg.base_url + "/chat/completions", build_body(cfg, history),
+                cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
             )
             st.requests += 1
             code = r[0]
@@ -438,7 +463,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 )
                 req_ms = (deadline - bindings.now_seconds()) * 1000
                 r = bindings.http_post(
-                    cfg.base_url + "/chat/completions", build_body(cfg, history), cfg.bearer, max(req_ms, 1)
+                    cfg.base_url + "/chat/completions", build_body(cfg, history),
+                    cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
                 )
                 st.requests += 1
                 code = r[0]
@@ -516,7 +542,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 var argsj = bindings.cjson_str(bindings.cjson_get(fn_, "arguments"))
                 var result = String("")
                 if name != "bash":
-                    result = '{"error":"unknown tool: ' + name + '"}'
+                    result = '{"error":"unknown tool":' + bindings.json_quote(name) + "}"
                 else:
                     var aj = bindings.cjson_parse(argsj)
                     if not aj:

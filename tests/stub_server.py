@@ -3,7 +3,7 @@
 
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length
-       | flaky | bigusage | ctxerr | loop
+       | flaky | bigusage | ctxerr | loop | weirdname
 """
 import json
 import sys
@@ -111,6 +111,20 @@ class Handler(BaseHTTPRequestHandler):
                     calls=[tool_call("call_1", "echo big")],
                     finish="tool_calls",
                     usage={"prompt_tokens": 60000, "completion_tokens": 8},
+                )
+            elif MODE == "weirdname":
+                resp = msg_response(
+                    calls=[
+                        {
+                            "id": "call_w",
+                            "type": "function",
+                            "function": {
+                                "name": 'weird"name',
+                                "arguments": "{}",
+                            },
+                        }
+                    ],
+                    finish="tool_calls",
                 )
             else:
                 resp = msg_response(

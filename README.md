@@ -74,6 +74,7 @@ Built to be left unattended on a local model:
 | Wall clock | `--max-seconds N` | 1800 |
 | Per-command timeout | `--max-command-seconds N` | 120 |
 | Command output cap | `--max-output-bytes N` | 65536 |
+| HTTP response cap | `--max-http-bytes N` | 64 MiB |
 | Prompt token budget | `--max-prompt-tokens N` | off |
 | Sampling | `--temperature F` | server default |
 | Transcript | `--transcript FILE` | off |

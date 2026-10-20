@@ -166,4 +166,30 @@ grep -q '"ev":"reset"' /tmp/max-state-reset/sessions/*/journal.jsonl && echo "PA
 run_mode normal ./max --repo . --state-dir /tmp/max-state-reset --continue "third" >/dev/null 2>&1
 grep "STUB users" /tmp/stub_normal.log | tail -1 | grep -q "first-one" && { echo "FAIL reset replay"; FAIL=1; } || echo "PASS reset replay"
 
+# 24. numeric flag validation: missing/garbage/negative values exit 64 cleanly
+out=$(./max --repo . --max-requests 2>&1); rc=$?
+check "missing value exit" 64 "$rc"
+echo "$out" | grep -q "missing value" && echo "PASS missing value msg" || { echo "FAIL missing value msg: $out"; FAIL=1; }
+./max --repo . --max-requests abc "task" >/dev/null 2>&1; check "bad integer exit" 64 "$?"
+./max --repo . --max-output-bytes -1 "task" >/dev/null 2>&1; check "negative value exit" 64 "$?"
+./max --repo . --temperature abc "task" >/dev/null 2>&1; check "bad float exit" 64 "$?"
+
+# 25. signal-killed command reports 128+signo, not 0
+out=$(printf '!kill -9 $$\n/quit\n' | ./max --repo . --state-dir /tmp/max-state-sig 2>&1)
+echo "$out" | grep -q "!exit 137" && echo "PASS signal exit 137" || { echo "FAIL signal exit"; echo "$out"; FAIL=1; }
+
+# 26. model tool name with a quote can't corrupt the wire JSON
+out=$(run_mode weirdname ./max --repo . "task" 2>/dev/null); rc=$?
+check "weirdname exit" 0 "$rc"
+check "weirdname answer" "Done." "$out"
+
+# 27. --max-http-bytes caps the response body -> transport error -> exit 3
+out=$(run_mode normal ./max --repo . --max-http-bytes 10 --retries 0 "task" 2>/dev/null); rc=$?
+check "http cap exit" 3 "$rc"
+
+# 28. session dir is private
+rm -rf /tmp/max-state-perms
+run_mode normal ./max --repo . --state-dir /tmp/max-state-perms "task" >/dev/null 2>&1
+check "session dir perms" "rwx------" "$(ls -ld /tmp/max-state-perms/sessions/*/ | cut -c2-10)"
+
 exit $FAIL

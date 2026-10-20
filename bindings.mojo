@@ -63,7 +63,11 @@ def json_quote(s: String) -> String:
 
 
 def http_post(
-    url: String, body: String, bearer: String, timeout_ms: Int = 600000
+    url: String,
+    body: String,
+    bearer: String,
+    timeout_ms: Int = 600000,
+    max_bytes: Int = 0,
 ) raises -> Tuple[Int, String]:
     var u = url
     var b = body
@@ -98,9 +102,10 @@ def http_post(
     _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
         h, c_int(CURLOPT_TIMEOUT_MS), c_long(timeout_ms)
     )
-    _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
-        h, c_int(CURLOPT_MAXFILESIZE_LARGE), c_long(64 * 1024 * 1024)
-    )
+    if max_bytes > 0:
+        _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
+            h, c_int(CURLOPT_MAXFILESIZE_LARGE), c_long(max_bytes)
+        )
     var rbuf = cstr_ptr()
     var rsize: UInt = 0
     var fp = external_call["open_memstream", FILE_ptr](
@@ -121,6 +126,8 @@ def http_post(
     _ = external_call["curl_slist_free_all", c_int](slist)
     _ = external_call["curl_easy_cleanup", c_int](h)
     if perf != 0:
+        if rbuf:
+            _ = external_call["free", c_int](rbuf.value())
         return 0, "CURL_ERROR:" + String(Int(perf))
     if not rbuf:
         return code, ""
@@ -315,7 +322,7 @@ def write_file(path: String, contents: String) -> Bool:
     return True
 
 
-def mkdir_p(path: String) -> Bool:
+def mkdir_p(path: String, mode: Int = 0o700) -> Bool:
     # mkdir -p: create each '/'-separated prefix, then verify the path exists.
     var pp = path
     for i in range(1, path.byte_length() + 1):
@@ -323,7 +330,7 @@ def mkdir_p(path: String) -> Bool:
             continue
         var pre = String(path[byte= : i])
         _ = external_call["mkdir", c_int, num_fixed_args=2](
-            pre.as_c_string_span().ptr(), c_int(0o777)
+            pre.as_c_string_span().ptr(), c_int(mode)
         )
     return external_call["access", c_int](
         pp.as_c_string_span().ptr(), c_int(0)
@@ -417,6 +424,11 @@ def run_capture(
     var wfd = pi.unsafe_load(1)
     _ = external_call["free", c_int](fds_mem.value())
     var pid = external_call["fork", c_int]()
+    if pid < 0:
+        _ = external_call["close", c_int](wfd)
+        _ = external_call["close", c_int](rfd)
+        _ = external_call["free", c_int](argv.value())
+        raise Error("fork failed")
     if pid == 0:
         _ = external_call["setpgid", c_int](c_int(0), c_int(0))
         _ = external_call["dup2", c_int](wfd, c_int(1))
@@ -426,12 +438,18 @@ def run_capture(
         var dn = external_call["open", c_int, num_fixed_args=2](
             devnull.as_c_string_span().ptr(), c_int(0)
         )
+        if dn < 0:
+            _ = external_call["_exit", c_int](c_int(126))
         _ = external_call["dup2", c_int](dn, c_int(0))
         var dir = cwd
-        _ = external_call["chdir", c_int](dir.as_c_string_span().ptr())
+        if external_call["chdir", c_int](dir.as_c_string_span().ptr()) != 0:
+            _ = external_call["_exit", c_int](c_int(126))
         var bash = "/bin/bash"
         _ = external_call["execv", c_int](bash.as_c_string_span().ptr(), argv)
         _ = external_call["_exit", c_int](c_int(127))
+    # Parent also setpgid()s so the kill group exists before the child gets
+    # to it; otherwise a signal in that window misses the still-grouped child.
+    _ = external_call["setpgid", c_int](pid, pid)
     _ = external_call["shim_track_pgid", c_int](pid)
     _ = external_call["close", c_int](wfd)
     var head_cap = cap // 2
@@ -470,9 +488,13 @@ def run_capture(
                     start = take
                 for i in range(start, Int(n)):
                     tail.append(buf[i])
-                while len(tail) > tail_cap:
-                    _ = tail.pop(0)
-                    discarded += 1
+                # Trim once per batch: keep the newest tail_cap bytes.
+                if len(tail) > tail_cap:
+                    discarded += len(tail) - tail_cap
+                    var keep = List[UInt8](capacity=tail_cap)
+                    for i in range(len(tail) - tail_cap, len(tail)):
+                        keep.append(tail[i])
+                    tail = keep^
             else:
                 break
         elif pr > 0 and (rev & (POLLHUP | POLLERR | POLLNVAL)) != 0:
@@ -501,9 +523,16 @@ def run_capture(
     _ = external_call["free", c_int](pfd_mem.value())
     _ = external_call["free", c_int](argv.value())
     if not child_done:
+        # Loop exited on an error path with the child still running: never
+        # leave it behind or block on it.
+        _ = external_call["kill", c_int](c_int(-pid), c_int(SIGKILL))
         _ = external_call["waitpid", c_int](pid, Pointer(to=status), c_int(0))
     _ = external_call["shim_track_pgid", c_int](c_int(0))
-    var code = (Int(status) >> 8) & 0xFF
+    var wst = Int(status)
+    var code = (wst >> 8) & 0xFF
+    var sig = wst & 0x7F
+    if sig != 0 and sig != 0x7F:
+        code = 128 + sig
     if timed_out:
         code = 124
     var out = String(unsafe_from_utf8=head^) + String(unsafe_from_utf8=tail^)
