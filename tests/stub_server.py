@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stub OpenAI-compatible endpoint for agent tests. Not shipped.
+"""Stub OpenAI-compatible endpoint for max tests. Not shipped.
 
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Python reference client for mojo-max-agent. Same task loop and wire
+"""Python reference client for max. Same task loop and wire
 protocol, stdlib only. Used as the comparison baseline in benchmarks."""
 import json
 import os

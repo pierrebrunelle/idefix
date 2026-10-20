@@ -4,7 +4,7 @@
 <text x="138" y="80" fill="#8b949e" text-anchor="end">aider</text>
 <rect x="150" y="60" width="125" height="26" rx="3" fill="#f7a24f"/>
 <text x="285" y="79" fill="#e6edf3" font-weight="bold">811</text>
-<text x="138" y="126" fill="#8b949e" text-anchor="end">mojo-max-agent</text>
+<text x="138" y="126" fill="#8b949e" text-anchor="end">max</text>
 <rect x="150" y="106" width="131" height="26" rx="3" fill="#4f8ff7"/>
 <text x="291" y="125" fill="#e6edf3" font-weight="bold">850</text>
 <text x="138" y="172" fill="#8b949e" text-anchor="end">python-loop</text>

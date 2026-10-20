@@ -9,7 +9,7 @@
 <rect x="150" y="106" width="277" height="26" rx="3" fill="#2dd4bf"/>
 <text x="437" y="125" fill="#e6edf3" font-weight="bold">33%</text>
 <text x="483" y="125" fill="#8b949e">3/9</text>
-<text x="138" y="172" fill="#8b949e" text-anchor="end">mojo-max-agent</text>
+<text x="138" y="172" fill="#8b949e" text-anchor="end">max</text>
 <rect x="150" y="152" width="92" height="26" rx="3" fill="#4f8ff7"/>
 <text x="252" y="171" fill="#e6edf3" font-weight="bold">11%</text>
 <text x="298" y="171" fill="#8b949e">1/9</text>

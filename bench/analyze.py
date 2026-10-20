@@ -36,7 +36,7 @@ def mark_infra(rows, logsdir):
 
 COLORS = {"mojo": "#4f8ff7", "ref": "#9a9a9a", "aider": "#f7a24f", "opencode": "#a78bfa",
           "pi": "#2dd4bf", "dsh": "#f778ba"}
-NAMES = {"mojo": "mojo-max-agent", "ref": "python-loop", "aider": "aider", "opencode": "opencode",
+NAMES = {"mojo": "max", "ref": "python-loop", "aider": "aider", "opencode": "opencode",
          "pi": "pi", "dsh": "deepseek-harness"}
 BG, FG, MUT, GRID = "#0d1117", "#e6edf3", "#8b949e", "#21262d"
 random.seed(7)
@@ -233,7 +233,7 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
               f"![time]({cpre}/median_time.svg) ![strip]({cpre}/wall_strip.svg)", "",
               f"![pareto]({cpre}/pareto.svg) ![tokens]({cpre}/tokens_per_success.svg)", "",
               "### Methodology notes", "",
-              "- mojo-max-agent and python-loop talk to MAX on :8000 with a text-command",
+              "- max and python-loop talk to MAX on :8000 with a text-command",
               "  protocol; aider uses its edit-format prompts on :8000. pi and",
               "  deepseek-harness use native OpenAI tool calling, which this MAX serve",
               "  build cannot parse (no hermes tool parser), so they run through",

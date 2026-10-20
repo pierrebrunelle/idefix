@@ -7,7 +7,7 @@
 <text x="138" y="126" fill="#8b949e" text-anchor="end">pi</text>
 <rect x="150" y="106" width="420" height="26" rx="3" fill="#2dd4bf"/>
 <text x="580" y="125" fill="#e6edf3" font-weight="bold">900s</text>
-<text x="138" y="172" fill="#8b949e" text-anchor="end">mojo-max-agent</text>
+<text x="138" y="172" fill="#8b949e" text-anchor="end">max</text>
 <rect x="150" y="152" width="410" height="26" rx="3" fill="#4f8ff7"/>
 <text x="570" y="171" fill="#e6edf3" font-weight="bold">879.2s</text>
 </svg>

@@ -5,7 +5,7 @@
 <rect x="150" y="60" width="420" height="26" rx="3" fill="#f7a24f"/>
 <text x="580" y="79" fill="#e6edf3" font-weight="bold">100%</text>
 <text x="634" y="79" fill="#8b949e">12/12</text>
-<text x="138" y="126" fill="#8b949e" text-anchor="end">mojo-max-agent</text>
+<text x="138" y="126" fill="#8b949e" text-anchor="end">max</text>
 <rect x="150" y="106" width="315" height="26" rx="3" fill="#4f8ff7"/>
 <text x="475" y="125" fill="#e6edf3" font-weight="bold">75%</text>
 <text x="521" y="125" fill="#8b949e">9/12</text>

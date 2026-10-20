@@ -1,6 +1,6 @@
 # max
 
-A minimal native coding agent in Mojo: one ~245 KB binary that accepts a
+A minimal native coding agent in Mojo: one ~255 KB binary that accepts a
 task, talks to a local model over MAX's OpenAI-compatible API, runs the
 model's `bash(command)` tool calls inside a repo, and prints the answer.
 No Python, no runtime deps beyond `libcurl` — the bundle (~3 MB with Mojo
@@ -87,7 +87,7 @@ when isolation matters.
 ## Benchmark
 
 `bench/` runs the same 14-task suite against reference, aider, pi, dsh and
-opencode harnesses at the same endpoint (mojo runs with `--bare` for
+opencode harnesses at the same endpoint (max runs with `--bare` for
 protocol parity): `python3 bench/run_matrix.py 2`, then
 `python3 bench/analyze.py` writes `bench/RESULTS.md`. Headline on
 Qwen3-4B-Instruct-2507: 75% pass at ~16 MB peak RSS.

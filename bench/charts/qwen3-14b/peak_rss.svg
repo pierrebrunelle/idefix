@@ -37,7 +37,7 @@
 <rect x="130" y="256" width="223" height="7" rx="2" fill="#2dd4bf"/>
 <text x="359" y="261" fill="#8b949e">124.2</text>
 <rect x="560" y="14" width="10" height="10" fill="#4f8ff7"/>
-<text x="574" y="23" fill="#8b949e" font-size="11">mojo-max-agent</text>
+<text x="574" y="23" fill="#8b949e" font-size="11">max</text>
 <rect x="650" y="14" width="10" height="10" fill="#f7a24f"/>
 <text x="664" y="23" fill="#8b949e" font-size="11">aider</text>
 <rect x="740" y="14" width="10" height="10" fill="#2dd4bf"/>

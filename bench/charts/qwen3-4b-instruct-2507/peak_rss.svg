@@ -68,7 +68,7 @@
 <rect x="130" y="302" width="361" height="2" rx="2" fill="#f778ba"/>
 <text x="497" y="302" fill="#8b949e">193.5</text>
 <rect x="560" y="14" width="10" height="10" fill="#4f8ff7"/>
-<text x="574" y="23" fill="#8b949e" font-size="11">mojo-max-agent</text>
+<text x="574" y="23" fill="#8b949e" font-size="11">max</text>
 <rect x="650" y="14" width="10" height="10" fill="#9a9a9a"/>
 <text x="664" y="23" fill="#8b949e" font-size="11">python-loop</text>
 <rect x="740" y="14" width="10" height="10" fill="#f7a24f"/>

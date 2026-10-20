@@ -1,5 +1,5 @@
 #!/bin/bash
-# with-max.sh [agent args...] — lazily serve MAX_MODEL via `max serve`, then
+# with-max.sh [max args...] — lazily serve MAX_MODEL via `max serve`, then
 # run ./max. If a server already answers at MAX_BASE_URL, it is left alone.
 set -euo pipefail
 cd "$(dirname "$0")/.."

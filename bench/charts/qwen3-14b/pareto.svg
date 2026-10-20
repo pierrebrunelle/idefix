@@ -26,6 +26,6 @@
 <circle cx="720" cy="266" r="9" fill="#2dd4bf"/>
 <text x="734" y="271" fill="#e6edf3">pi</text>
 <circle cx="705" cy="335" r="9" fill="#4f8ff7"/>
-<text x="719" y="340" fill="#e6edf3">mojo-max-agent</text>
+<text x="719" y="340" fill="#e6edf3">max</text>
 <text x="90" y="416" fill="#8b949e">median wall time per task (s)  |  pass rate</text>
 </svg>
