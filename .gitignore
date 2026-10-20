@@ -1,6 +1,6 @@
-agent
+max
 bundle/
-libagent_c.a
+libmax_c.a
 *.o
 __pycache__/
 .DS_Store
