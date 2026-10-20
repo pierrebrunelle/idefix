@@ -152,6 +152,19 @@ def cjson_print(item: raw_ptr) -> String:
     return s
 
 
+def cjson_replace_str(obj: raw_ptr, key: String, new_str: String) -> Bool:
+    var k = key
+    var v = new_str
+    var node = external_call["cJSON_CreateString", raw_ptr](
+        v.as_c_string_span().ptr()
+    )
+    if not node:
+        return False
+    return external_call["cJSON_ReplaceItemInObject", c_int](
+        obj, k.as_c_string_span().ptr(), node
+    ) != 0
+
+
 def cjson_arr(obj: raw_ptr, i: Int) -> raw_ptr:
     return external_call["cJSON_GetArrayItem", raw_ptr](obj, c_int(i))
 
@@ -280,6 +293,66 @@ def write_file(path: String, contents: String) -> Bool:
     )
     _ = external_call["fclose", c_int](fp)
     return True
+
+
+def append_file(path: String, contents: String) -> Bool:
+    var p = path
+    var c = contents
+    var fp = external_call["fopen", FILE_ptr](
+        p.as_c_string_span().ptr(), "a".as_c_string_span().ptr()
+    )
+    if not fp:
+        return False
+    var cs = c.as_c_string_span()
+    _ = external_call["fwrite", c_size_t](
+        cs.ptr(), c_size_t(1), c_size_t(c.byte_length()), fp
+    )
+    _ = external_call["fclose", c_int](fp)
+    return True
+
+
+def realpath(path: String) -> String:
+    var p = path
+    var buf = List[UInt8](capacity=4096)
+    buf.resize(4096, 0)
+    var r = external_call["realpath", cstr_ptr](
+        p.as_c_string_span().ptr(), buf.unsafe_ptr()
+    )
+    if not r:
+        return path
+    return String(unsafe_from_utf8_ptr=r.value())
+
+
+def fnv1a_hex(s: String) -> String:
+    var h: UInt64 = 14695981039346656037
+    for i in range(s.byte_length()):
+        h = (h ^ UInt64(Int(s.as_bytes()[i]))) * 1099511628211
+    var out = String("")
+    var v = h
+    for _ in range(16):
+        var nib = Int(v & 15)
+        var c = String(chr(48 + nib)) if nib < 10 else String(chr(87 + nib))
+        out = c + out
+        v = v >> 4
+    return out
+
+
+def sleep_ms(ms: Int):
+    _ = external_call["usleep", c_int](c_int(ms * 1000))
+
+
+def strip_markup(content: String) -> String:
+    # Drop <tool_call>...</tool_call> regions for display; an unclosed tag
+    # truncates. The wire copy keeps the markup for markup_calls_json().
+    var out = content
+    while True:
+        var a = out.find("<tool_call>")
+        if a < 0:
+            return String(out.strip())
+        var b = out.find("</tool_call>")
+        if b < 0:
+            return String(out[byte= : a].strip())
+        out = String(out[byte= : a]) + String(out[byte=b + 12 :])
 
 
 def c_argv(mut args: List[String]) raises -> raw_ptr:

@@ -30,12 +30,13 @@ TOOLCALL_BASE = os.environ.get("BENCH_TOOLCALL_BASE", "http://127.0.0.1:8001/v1"
 
 def mojo_cmd(repo, task_text, transcript):
     return [
-        os.path.join(ROOT, "agent"),
+        os.path.join(ROOT, "max"),
         "--repo", repo,
         "--max-requests", "15",
         "--max-seconds", str(AGENT_MAX_SECONDS),
         "--temperature", "0.6",
         "--transcript", transcript,
+        "--bare",  # disable product features so the wire protocol matches ref_client
         task_text,
     ], {}
 
