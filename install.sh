@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 
 make bundle
 DEST="$HOME/.local/max"
+rm -rf "$DEST"
 mkdir -p "$DEST" "$HOME/.local/bin"
 cp -R bundle/. "$DEST/"
 cat > "$HOME/.local/bin/max" <<EOF

@@ -32,3 +32,6 @@ char *shim_read_line(void) {
     if (line[n - 1] == '\n') line[n - 1] = 0;
     return line;
 }
+
+/* Nonzero when the last shim_read_line() NULL came from an error, not EOF. */
+int shim_stdin_error(void) { return ferror(stdin); }

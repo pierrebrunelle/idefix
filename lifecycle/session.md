@@ -1,5 +1,9 @@
 # Session — agent REPL
 
+> Recorded pre-rename: `./agent`, `agent.mojo`, `agent_shim.c`, `[agent]`,
+> and the `mojo>` prompt below are now `./max`, `max.mojo`, `max_shim.c`,
+> `[max]`, and `max>`.
+
 ## Who, and the job
 
 Pierre (see `lifecycle/job.md`): has the built binary, wants a task + a

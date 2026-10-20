@@ -1,9 +1,9 @@
-# opt — mojo as an optimization engine
+# opt — max as an optimization engine
 
 karpathy/autoresearch pattern, generalized: **mutate artifact → score →
 keep or discard → repeat**. The artifact can be code, a config, a strategy,
 a prompt — anything `score.sh` can grade. autoresearch is harness-agnostic
-("spin up Claude/Codex or whatever"); mojo is the smallest possible engine
+("spin up Claude/Codex or whatever"); max is the smallest possible engine
 for that loop: a 4MB binary, ~16MB RSS, zero deps, one OpenAI-compatible
 endpoint. The loop machinery itself is bash + git — no Python in the driver
 path (score.sh invokes whatever the artifact needs).
@@ -27,7 +27,7 @@ as weighted sum or edge-probe penalty.
 | file | role | who edits it |
 | --- | --- | --- |
 | `program.md` | the game: rules, editable files, metric | **human** (the "research org code") |
-| artifact(s) | the thing being optimized (e.g. `fibs.py`) | **mojo** |
+| artifact(s) | the thing being optimized (e.g. `fibs.py`) | **max** |
 | `score.sh` | prints ONE float (exit-checked, oracle-verified) | nobody mid-run |
 
 Direction defaults to min (`OPT_DIRECTION=max` to flip). Everything else in
@@ -37,18 +37,18 @@ the workspace is fair game for mutation — keep the mutable surface small
 ## Run it
 
 ```bash
+# run from the repo root; loop.sh resolves ./max relative to itself
 cp -r opt/examples/fib-speed /tmp/ws1       # workspaces are scratch copies
-cd /Users/pjlb/pierrebrunelle/mojo-max-agent
 MAX_BASE_URL=http://127.0.0.1:8002/v1 MAX_MODEL=Qwen/Qwen3-4B-Instruct-2507 \
   OPT_N=100 OPT_SECONDS=300 ./opt/loop.sh /tmp/ws1
 ```
 
 Each iteration logs to `experiments.tsv` (`iter, score, best, KEEP|DROP`)
-and `logs/iter-N.log` (mojo's `-v` transcript). Git history per workspace IS
+and `logs/iter-N.log` (max's `-v` transcript). Git history per workspace IS
 the experiment journal: `git log` shows every kept improvement.
 
-Env knobs: `MOJO_AGENT` (binary path), `OPT_N`, `OPT_DIRECTION`,
-`OPT_MAX_REQ`, `OPT_SECONDS`, plus mojo's own `MAX_BASE_URL`/`MAX_MODEL`.
+Env knobs: `MAX_AGENT` (binary path), `OPT_N`, `OPT_DIRECTION`,
+`OPT_MAX_REQ`, `OPT_SECONDS`, plus max's own `MAX_BASE_URL`/`MAX_MODEL`.
 
 ## Examples
 

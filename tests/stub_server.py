@@ -3,7 +3,7 @@
 
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length
-       | flaky | bigusage | ctxerr | loop | weirdname
+       | flaky | bigusage | ctxerr | ctxbig | loop | weirdname
 """
 import json
 import sys
@@ -61,6 +61,10 @@ class Handler(BaseHTTPRequestHandler):
         if MODE == "ctxerr" and n_tool > 0 and not STATE["fired"]:
             STATE["fired"] = True
             reply(self, 400, {"error": {"message": "context length exceeded"}})
+            return
+        if MODE == "ctxbig" and n_tool > 0 and not STATE["fired"]:
+            STATE["fired"] = True
+            reply(self, 400, {"error": {"message": "Context Window Exceeded"}})
             return
         if MODE == "loop":
             reply(

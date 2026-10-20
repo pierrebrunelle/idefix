@@ -299,9 +299,12 @@ def prompt(s: String):
 
 
 def read_line() raises -> String:
-    # Raises on EOF; an empty line returns "".
+    # Raises "eof" at end of input, "read error" on a stdin failure; an
+    # empty line returns "".
     var p = external_call["shim_read_line", cstr_ptr]()
     if not p:
+        if external_call["shim_stdin_error", c_int]() != 0:
+            raise Error("read error")
         raise Error("eof")
     return String(unsafe_from_utf8_ptr=p.value())
 

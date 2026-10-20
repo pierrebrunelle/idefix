@@ -28,4 +28,7 @@ if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
         exit 1
     }
 fi
-exec ./max "$@"
+./max "$@"
+rc=$?
+# Plain exit so the EXIT trap fires: a server we started gets killed here.
+exit "$rc"

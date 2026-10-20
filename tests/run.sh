@@ -94,6 +94,13 @@ check "ctxerr exit" 0 "$rc"
 check "ctxerr answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_ctxerr.log && echo "PASS ctxerr cleared" || { echo "FAIL ctxerr cleared"; cat /tmp/stub_ctxerr.log; FAIL=1; }
 
+# 12b. ctxbig: capitalized context error also triggers compaction
+rm -rf /tmp/max-state-ctx2
+out=$(run_mode ctxbig ./max --repo . --compact-keep 0 --state-dir /tmp/max-state-ctx2 "task" 2>/dev/null); rc=$?
+check "ctxbig exit" 0 "$rc"
+check "ctxbig answer" "Done." "$out"
+grep -q "cleared; re-run" /tmp/stub_ctxbig.log && echo "PASS ctxbig cleared" || { echo "FAIL ctxbig cleared"; cat /tmp/stub_ctxbig.log; FAIL=1; }
+
 # 13. loop: same command every turn -> loop_warning in tool result
 out=$(run_mode loop ./max --repo . --max-requests 6 "task" 2>/dev/null); rc=$?
 check "loop exit" 2 "$rc"
@@ -130,10 +137,13 @@ echo "$out" | grep -q "resumed from" && echo "PASS resume" || { echo "FAIL resum
 out=$(run_mode normal ./max --repo . --resume /tmp/max-missing.jsonl "task" 2>&1); rc=$?
 check "resume missing exits 64" 64 "$rc"
 
-# 18. REPL !cmd: runs locally, no model request
+# 18. REPL !cmd: runs locally, no model request; bare "!" warns, still no request
 out=$(printf '!echo PASSTHRU\n/quit\n' | run_mode normal ./max --repo . 2>/dev/null)
 echo "$out" | grep -q "PASSTHRU" && echo "PASS bang ran" || { echo "FAIL bang ran"; FAIL=1; }
 [ ! -s /tmp/stub_normal.log ] && echo "PASS bang no request" || { echo "FAIL bang made request"; cat /tmp/stub_normal.log; FAIL=1; }
+out=$(printf '!\n/quit\n' | run_mode normal ./max --repo . 2>&1)
+echo "$out" | grep -q "empty command" && echo "PASS bare bang warns" || { echo "FAIL bare bang warns"; echo "$out"; FAIL=1; }
+[ ! -s /tmp/stub_normal.log ] && echo "PASS bare bang no request" || { echo "FAIL bare bang made request"; cat /tmp/stub_normal.log; FAIL=1; }
 
 # 19. AGENTS.md auto-loads into the system prompt; --bare does not
 rm -rf /tmp/max-agents-repo

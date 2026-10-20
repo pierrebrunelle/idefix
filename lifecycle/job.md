@@ -1,5 +1,8 @@
 # Job
 
+> Recorded pre-rename: `./agent` and `agent.mojo` below are now `./max`
+> and `max.mojo`, and the REPL prompt is `max>` (was `mojo>`).
+
 - Person: a developer who just built `agent` and has a local OpenAI-compatible
   endpoint (or the stub) — no shell plumbing wanted, just talk to it.
 - Situation: has the binary, `MAX_MODEL` may or may not be set, wants to drive a

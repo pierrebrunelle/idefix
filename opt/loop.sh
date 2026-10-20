@@ -1,13 +1,14 @@
 #!/bin/bash
-# opt loop — karpathy/autoresearch pattern for mojo.
+# opt loop — karpathy/autoresearch pattern for max.
 # A workspace is a git repo containing: program.md (what to optimize) and
-# score.sh (prints one float). Each iteration: mojo mutates the artifact,
+# score.sh (prints one float). Each iteration: max mutates the artifact,
 # score.sh measures, git keeps or discards. One scalar, one loop, one file
 # of experiments.
 set -u
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${1:?usage: loop.sh <workspace> [iters]}" || exit 1
 ITERS="${2:-${OPT_N:-100}}"
-AGENT="${MOJO_AGENT:-/Users/pjlb/pierrebrunelle/mojo-max-agent/agent}"
+AGENT="${MAX_AGENT:-$REPO/max}"
 DIR="${OPT_DIRECTION:-min}"   # min: lower score wins; max: higher wins
 
 [ -f program.md ] || { echo "missing program.md"; exit 1; }

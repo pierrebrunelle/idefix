@@ -131,9 +131,13 @@ def parse_args() raises -> Config:
             elif arg == "--temperature":
                 try:
                     cfg.temperature = Float64(v)
-                    cfg.has_temperature = True
                 except:
                     die("invalid value for --temperature: " + v, 64)
+                # NaN and +-inf would serialize to bare `nan`/`inf` on the
+                # wire, which is not valid JSON.
+                if cfg.temperature != cfg.temperature or (cfg.temperature - cfg.temperature) != 0.0:
+                    die("invalid value for --temperature: " + v + " (must be finite)", 64)
+                cfg.has_temperature = True
             elif arg == "--notify":
                 cfg.notify = v
             elif arg == "--state-dir":
@@ -376,7 +380,8 @@ def rebuild_history(journal_text: String, system_msg: String) raises -> String:
 
 
 def is_ctx_error(resp: String) -> Bool:
-    return resp.find("context") >= 0 or resp.find("too long") >= 0
+    var low = resp.lower()
+    return low.find("context") >= 0 or low.find("too long") >= 0
 
 
 
@@ -478,12 +483,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             bindings.eprint("[max] response is not JSON")
             exit_code = 3
             break
-        write_status(cfg, st, "")
         var usage_ = bindings.cjson_get(root, "usage")
         if usage_:
             st.last_prompt_tokens = Int(bindings.cjson_num(bindings.cjson_get(usage_, "prompt_tokens")))
             st.total_prompt_tokens += st.last_prompt_tokens
             st.total_completion_tokens += Int(bindings.cjson_num(bindings.cjson_get(usage_, "completion_tokens")))
+        write_status(cfg, st, "")
         var choices = bindings.cjson_get(root, "choices")
         if not choices or bindings.cjson_len(choices) == 0:
             bindings.eprint("[max] response has no choices")
@@ -763,8 +768,11 @@ def main() raises:
             )
             bindings.eprint("[max] context reset")
             continue
-        if not cfg.bare and t.byte_length() > 1 and String(t[byte= : 1]) == "!":
+        if not cfg.bare and String(t[byte= : 1]) == "!":
             var shell_cmd = String(t[byte=1:])
+            if shell_cmd == "":
+                bindings.eprint("[max] !cmd: empty command")
+                continue
             try:
                 var rc = bindings.run_capture(
                     shell_cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms
