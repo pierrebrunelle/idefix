@@ -196,8 +196,10 @@ def parse_args() raises -> Config:
         else:
             positional.append(arg)
         i += 1
-    if len(positional) > 0:
-        cfg.task = positional[len(positional) - 1]
+    if len(positional) > 1:
+        die("multiple positional arguments; quote the task as a single argument", 64)
+    if len(positional) == 1:
+        cfg.task = positional[0]
     # no TASK -> REPL mode (validated after env checks)
     var env_base = getenv("MAX_BASE_URL")
     if env_base != "":
@@ -363,18 +365,19 @@ def rebuild_history(journal_text: String, system_msg: String) raises -> String:
     var history = system_msg
     for line in journal_text.split("\n"):
         var s = String(line)
-        if s.find('"ev":"reset"') >= 0:
-            history = system_msg
-            continue
-        if s.find('"ev":"msg"') < 0:
+        if s == "":
             continue
         var j = bindings.cjson_parse(s)
         if not j:
             continue
-        var m = bindings.cjson_get(j, "m")
-        if m:
-            var mj = bindings.cjson_print(m)
-            history += "," + mj
+        var ev = bindings.cjson_str(bindings.cjson_get(j, "ev"))
+        if ev == "reset":
+            history = system_msg
+        elif ev == "msg":
+            var m = bindings.cjson_get(j, "m")
+            if m:
+                var mj = bindings.cjson_print(m)
+                history += "," + mj
         bindings.cjson_del(j)
     return history
 
@@ -547,7 +550,10 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 var argsj = bindings.cjson_str(bindings.cjson_get(fn_, "arguments"))
                 var result = String("")
                 if name != "bash":
-                    result = '{"error":"unknown tool":' + bindings.json_quote(name) + "}"
+                    result = (
+                        '{"error":"unknown tool","name":'
+                        + bindings.json_quote(name) + "}"
+                    )
                 else:
                     var aj = bindings.cjson_parse(argsj)
                     if not aj:

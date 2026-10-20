@@ -183,6 +183,7 @@ echo "$out" | grep -q "missing value" && echo "PASS missing value msg" || { echo
 ./max --repo . --max-requests abc "task" >/dev/null 2>&1; check "bad integer exit" 64 "$?"
 ./max --repo . --max-output-bytes -1 "task" >/dev/null 2>&1; check "negative value exit" 64 "$?"
 ./max --repo . --temperature abc "task" >/dev/null 2>&1; check "bad float exit" 64 "$?"
+./max --repo . one two >/dev/null 2>&1; check "extra positional exit" 64 "$?"
 
 # 25. signal-killed command reports 128+signo, not 0
 out=$(printf '!kill -9 $$\n/quit\n' | ./max --repo . --state-dir /tmp/max-state-sig 2>&1)
@@ -192,6 +193,8 @@ echo "$out" | grep -q "!exit 137" && echo "PASS signal exit 137" || { echo "FAIL
 out=$(run_mode weirdname ./max --repo . "task" 2>/dev/null); rc=$?
 check "weirdname exit" 0 "$rc"
 check "weirdname answer" "Done." "$out"
+grep -q "STUB tool json ok: True" /tmp/stub_weirdname.log && echo "PASS weirdname json" || { echo "FAIL weirdname json"; cat /tmp/stub_weirdname.log; FAIL=1; }
+grep -q '"name":"weird' /tmp/stub_weirdname.log && echo "PASS weirdname name" || { echo "FAIL weirdname name"; FAIL=1; }
 
 # 27. --max-http-bytes caps the response body -> transport error -> exit 3
 out=$(run_mode normal ./max --repo . --max-http-bytes 10 --retries 0 "task" 2>/dev/null); rc=$?

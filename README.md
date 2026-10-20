@@ -45,11 +45,12 @@ shell command locally without a model request.
 
 Built to be left unattended on a local model:
 
-- `~/.max/sessions/<repo>/journal.jsonl` is the append-only event log
-  (messages, retries, compactions, done). `--continue` replays it to
-  resume this repo's session; `--resume FILE` resumes any journal.
+- `~/.max/sessions/<repo-hash>/journal.jsonl` is the append-only event
+  log (messages, retries, compactions, done); `<repo-hash>` is a hash of
+  the repo's real path. `--continue` replays it to resume this repo's
+  session; `--resume FILE` resumes any journal.
 - `status` in the same dir shows live `req= cmds= prompt_tokens= elapsed=
-  last="<cmd>"` — `cat` it from another terminal.
+  last=<cmd>` — `cat` it from another terminal.
 - `--compact-at N` (default 24000 prompt tokens) rewrites the oldest tool
   outputs to `[cleared; re-run the command to inspect]`: re-fetchable data,
   pairing preserved, logged every time. A context-length HTTP 400 triggers

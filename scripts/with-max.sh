@@ -10,6 +10,10 @@ BASE="${MAX_BASE_URL:-http://127.0.0.1:8000/v1}"
 
 started=""
 if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
+    if ! "$MAXCLI" --help 2>&1 | grep -qi serve; then
+        echo "with-max: $MAXCLI has no 'serve' command (the agent binary shadows Modular's max?); set MAXCLI=/path/to/modular-max" >&2
+        exit 1
+    fi
     LOG="$(mktemp "${TMPDIR:-/tmp}/max-serve.XXXXXX")"
     echo "with-max: starting max serve ($MAX_MODEL) ..." >&2
     serve_args=(serve --model "$MAX_MODEL")

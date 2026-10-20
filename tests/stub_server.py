@@ -13,6 +13,14 @@ MODE = sys.argv[2] if len(sys.argv) > 2 else "normal"
 STATE = {"fired": False}
 
 
+def _is_json(s):
+    try:
+        json.loads(s)
+        return True
+    except Exception:
+        return False
+
+
 def tool_call(call_id, command):
     return {
         "id": call_id,
@@ -147,6 +155,9 @@ class Handler(BaseHTTPRequestHandler):
                 m["content"] for m in msgs if m.get("role") == "tool"
             ]
             sys.stderr.write("STUB tool results: %s\n" % tool_contents)
+            sys.stderr.write(
+                "STUB tool json ok: %s\n" % all(_is_json(c) for c in tool_contents)
+            )
             resp = msg_response(
                 content="Done." if ok else "PROTOCOL VIOLATION: unmatched tool results"
             )
