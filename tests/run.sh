@@ -249,4 +249,11 @@ out=$(run_mode chunked ./max --repo . --max-http-bytes 1024 --retries 0 "task" 2
 check "chunked cap exit" 3 "$rc"
 echo "$out" | grep -q "exceeds --max-http-bytes" && echo "PASS chunked cap msg" || { echo "FAIL chunked cap msg: $out"; FAIL=1; }
 
+# 36. env scrub: model commands see no credential-named vars, others pass through
+rm -f /tmp/stub_envdump.log
+out=$(run_mode envdump env MAX_API_KEY=sekrit-xy KEEP_ME_PLAIN=visible ./max --repo . "task" 2>/dev/null); rc=$?
+check "envdump exit" 0 "$rc"
+grep -q "KEEP_ME_PLAIN=visible" /tmp/stub_envdump.log && echo "PASS env plain kept" || { echo "FAIL env plain kept"; cat /tmp/stub_envdump.log; FAIL=1; }
+grep -q "sekrit-xy\|MAX_API_KEY" /tmp/stub_envdump.log && { echo "FAIL env leaked credential"; FAIL=1; } || echo "PASS env scrubbed"
+
 exit $FAIL

@@ -4,7 +4,7 @@
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
-       | chunked
+       | chunked | envdump
 """
 import json
 import sys
@@ -145,6 +145,11 @@ class Handler(BaseHTTPRequestHandler):
             elif MODE == "binout":
                 resp = msg_response(
                     calls=[tool_call("call_o", "printf '\\377\\376bin'")],
+                    finish="tool_calls",
+                )
+            elif MODE == "envdump":
+                resp = msg_response(
+                    calls=[tool_call("call_e", "env")],
                     finish="tool_calls",
                 )
             elif MODE == "weirdname":

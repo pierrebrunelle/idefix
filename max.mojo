@@ -81,7 +81,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command"
+    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -591,7 +591,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     st.last_cmd = cmd
                                     st.cmd_repeats = 0
                             var rc = bindings.run_capture(
-                                cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms
+                                cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms, True
                             )
                             vlog(
                                 cfg,
@@ -678,7 +678,7 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
     )
     if cfg.notify != "":
         try:
-            _ = bindings.run_capture(cfg.notify, cfg.repo, 8192, 30000)
+            _ = bindings.run_capture(cfg.notify, cfg.repo, 8192, 30000, False)
         except:
             pass
     bindings.eprint(
@@ -801,7 +801,7 @@ def main() raises:
                 continue
             try:
                 var rc = bindings.run_capture(
-                    shell_cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms
+                    shell_cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms, False
                 )
                 print(rc[0])
                 if rc[1] != 0:

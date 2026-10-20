@@ -1,5 +1,7 @@
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 /* Forwards SIGINT/SIGTERM to the tracked child process group, then
@@ -64,3 +66,35 @@ char *shim_read_line(void) {
 
 /* Nonzero when the last shim_read_line() NULL came from an error, not EOF. */
 int shim_stdin_error(void) { return ferror(stdin); }
+
+/* envp for model-issued commands: drops every variable whose NAME holds a
+   credential marker so an `env` dump cannot put secrets into the transcript.
+   Files stay readable; this narrows the channel, it is not a sandbox. */
+extern char **environ;
+
+char **shim_scrubbed_env(void) {
+    static const char *pats[] = {
+        "KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"};
+    static char *empty[] = {NULL};
+    int n = 0;
+    while (environ[n]) n++;
+    char **out = calloc(n + 1, sizeof(char *));
+    if (!out) return empty;
+    int j = 0;
+    for (int i = 0; i < n; i++) {
+        char *e = environ[i];
+        char *eq = strchr(e, '=');
+        size_t name_len = eq ? (size_t)(eq - e) : strlen(e);
+        int drop = 0;
+        for (size_t k = 0; k < sizeof(pats) / sizeof(pats[0]); k++) {
+            char *hit = strstr(e, pats[k]);
+            if (hit && (size_t)(hit - e) < name_len) {
+                drop = 1;
+                break;
+            }
+        }
+        if (!drop) out[j++] = e;
+    }
+    out[j] = NULL;
+    return out;
+}

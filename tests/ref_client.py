@@ -36,6 +36,13 @@ TOOLS = [
 
 TOOL_CALL_RE = re.compile(r"<tool_call>(.*?)</tool_call>", re.S)
 
+# Commands run without credential-named env vars, matching the mojo binary.
+CMD_ENV = {
+    k: v
+    for k, v in os.environ.items()
+    if not any(p in k for p in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"))
+}
+
 
 def post(base, body):
     req = urllib.request.Request(
@@ -119,6 +126,7 @@ def main():
                         cwd=repo,
                         timeout=120,
                         stdin=subprocess.DEVNULL,
+                        env=CMD_ENV,
                     )
                     out = (p.stdout + p.stderr).decode("utf8", "replace")[:65536]
                     rc = p.returncode

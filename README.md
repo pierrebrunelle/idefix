@@ -59,5 +59,7 @@ opencode at the same endpoint. Method and raw logs: `bench/README.md`.
 
 Single task loop; one bash tool. No streaming, providers, MCP, subagents,
 or sandboxing — commands run with your permissions in the repo path, so
-use an isolated checkout when isolation matters. The model server is a
+use an isolated checkout when isolation matters. Env vars named for
+credentials (KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL) are stripped from
+model-issued commands; files stay readable. The model server is a
 separate process; the agent never manages model lifecycle.

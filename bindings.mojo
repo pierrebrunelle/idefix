@@ -491,7 +491,7 @@ def c_argv(mut args: List[String]) raises -> raw_ptr:
 
 
 def run_capture(
-    command: String, cwd: String, cap: Int, timeout_ms: Int
+    command: String, cwd: String, cap: Int, timeout_ms: Int, scrub_env: Bool
 ) raises -> Tuple[String, Int, Int]:
     var args = List[String]("/bin/bash", "-c", command, __list_literal__=NoneType())
     var argv = c_argv(args)
@@ -524,7 +524,13 @@ def run_capture(
         if external_call["chdir", c_int](dir.as_c_string_span().ptr()) != 0:
             _ = external_call["_exit", c_int](c_int(126))
         var bash = "/bin/bash"
-        _ = external_call["execv", c_int](bash.as_c_string_span().ptr(), argv)
+        if scrub_env:
+            var envp = external_call["shim_scrubbed_env", raw_ptr]()
+            _ = external_call["execve", c_int](
+                bash.as_c_string_span().ptr(), argv, envp
+            )
+        else:
+            _ = external_call["execv", c_int](bash.as_c_string_span().ptr(), argv)
         _ = external_call["_exit", c_int](c_int(127))
     # Parent also setpgid()s so the kill group exists before the child gets
     # to it; otherwise a signal in that window misses the still-grouped child.
