@@ -164,7 +164,8 @@ def parse_args() raises -> Config:
         elif arg == "--bare":
             cfg.bare = True
         elif arg == "-h" or arg == "--help":
-            die(usage(), 0)
+            print(usage())
+            _ = external_call["exit", c_int](c_int(0))
         else:
             positional.append(arg)
         i += 1
@@ -335,6 +336,9 @@ def rebuild_history(journal_text: String, system_msg: String) raises -> String:
     var history = system_msg
     for line in journal_text.split("\n"):
         var s = String(line)
+        if s.find('"ev":"reset"') >= 0:
+            history = system_msg
+            continue
         if s.find('"ev":"msg"') < 0:
             continue
         var j = bindings.cjson_parse(s)
@@ -647,13 +651,8 @@ def main() raises:
     st.start_s = bindings.now_seconds()
 
     # session dir: create it; on failure state features quietly turn off
-    if cfg.session_dir != "":
-        try:
-            _ = bindings.run_capture(
-                "mkdir -p '" + cfg.session_dir + "'", ".", 1024, 5000
-            )
-        except:
-            cfg.session_dir = ""
+    if cfg.session_dir != "" and not bindings.mkdir_p(cfg.session_dir):
+        cfg.session_dir = ""
 
     var system = SYSTEM_PROMPT
     var repo_docs = String("")
@@ -732,6 +731,10 @@ def main() raises:
             break
         if t == "/reset":
             history = initial_history
+            journal(
+                cfg,
+                '{"ev":"reset","ts":' + String(bindings.now_seconds()) + "}",
+            )
             bindings.eprint("[max] context reset")
             continue
         if not cfg.bare and t.byte_length() > 1 and String(t[byte= : 1]) == "!":

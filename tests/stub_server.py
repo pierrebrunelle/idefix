@@ -49,6 +49,10 @@ class Handler(BaseHTTPRequestHandler):
         n_tool = sum(1 for m in msgs if m.get("role") == "tool")
         sys.stderr.write("STUB sys: %s\n" % msgs[0].get("content", ""))
         sys.stderr.write("STUB user: %s\n" % msgs[-1].get("content", "")[:500])
+        sys.stderr.write(
+            "STUB users: %s\n"
+            % [m.get("content") for m in msgs if m.get("role") == "user"]
+        )
         sys.stderr.write("STUB temp: %s\n" % body.get("temperature"))
         if MODE == "flaky" and not STATE["fired"]:
             STATE["fired"] = True

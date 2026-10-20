@@ -35,22 +35,31 @@ def eprint(s: String):
 
 
 def json_quote(s: String) -> String:
-    var out = String('"')
+    # Escapes ", \, control chars; multibyte UTF-8 passes through unmodified.
+    var out = List[UInt8]()
+    out.append(0x22)
     for i in range(s.byte_length()):
-        var b = Int(s.as_bytes()[i])
+        var b = s.as_bytes()[i]
         if b == 0x22 or b == 0x5C:
-            out += String('\\') + String(chr(b))
+            out.append(0x5C)
+            out.append(b)
         elif b == 0x0A:
-            out += "\\n"
+            out.append(0x5C); out.append(0x6E)
         elif b == 0x0D:
-            out += "\\r"
+            out.append(0x5C); out.append(0x72)
         elif b == 0x09:
-            out += "\\t"
+            out.append(0x5C); out.append(0x74)
         elif b < 0x20:
-            out += "\\u00" + hex(b)[byte=2:]
+            var e = String("\\u00")
+            if Int(b) < 16:
+                e += "0"
+            e += String(hex(Int(b))[byte=2:])
+            for j in range(e.byte_length()):
+                out.append(e.as_bytes()[j])
         else:
-            out += String(chr(b))
-    return out + '"'
+            out.append(b)
+    out.append(0x22)
+    return String(unsafe_from_utf8=out^)
 
 
 def http_post(
@@ -258,6 +267,17 @@ def now_seconds() -> Int:
     return Int(external_call["time", c_long](raw_ptr()))
 
 
+def now_ms() -> Int:
+    # gettimeofday into a 16-byte timeval; ms resolution for timeouts.
+    var tv = List[UInt8](capacity=16)
+    tv.resize(16, 0)
+    _ = external_call["gettimeofday", c_int, num_fixed_args=2](
+        tv.unsafe_ptr(), raw_ptr()
+    )
+    var p64 = tv.unsafe_ptr().unsafe_bitcast[Int64]()
+    return Int(p64.unsafe_load(0)) * 1000 + Int(p64.unsafe_load(1)) // 1000
+
+
 def stdin_is_tty() -> Bool:
     return external_call["isatty", c_int](c_int(0)) != 0
 
@@ -293,6 +313,21 @@ def write_file(path: String, contents: String) -> Bool:
     )
     _ = external_call["fclose", c_int](fp)
     return True
+
+
+def mkdir_p(path: String) -> Bool:
+    # mkdir -p: create each '/'-separated prefix, then verify the path exists.
+    var pp = path
+    for i in range(1, path.byte_length() + 1):
+        if i != path.byte_length() and Int(path.as_bytes()[i]) != 0x2F:
+            continue
+        var pre = String(path[byte= : i])
+        _ = external_call["mkdir", c_int, num_fixed_args=2](
+            pre.as_c_string_span().ptr(), c_int(0o777)
+        )
+    return external_call["access", c_int](
+        pp.as_c_string_span().ptr(), c_int(0)
+    ) == 0
 
 
 def append_file(path: String, contents: String) -> Bool:
@@ -412,8 +447,8 @@ def run_capture(
     var status: c_int = 0
     var timed_out = False
     var child_done = False
-    var elapsed_ms = 0
-    var post_done_ms = 0
+    var start_ms = now_ms()
+    var done_ms = 0
     while True:
         pfd32.unsafe_store(0, Int32(rfd))
         pfd16.unsafe_store(2, Int16(POLLIN))
@@ -448,21 +483,19 @@ def run_capture(
             )
             if w == pid:
                 child_done = True
-            else:
-                if pr == 0:
-                    elapsed_ms += 50
-                if elapsed_ms > timeout_ms:
-                    timed_out = True
-                    _ = external_call["kill", c_int](c_int(-pid), c_int(SIGTERM))
-                    _ = external_call["usleep", c_int](c_int(200000))
-                    _ = external_call["kill", c_int](c_int(-pid), c_int(SIGKILL))
-                    _ = external_call["waitpid", c_int](
-                        pid, Pointer(to=status), c_int(0)
-                    )
-                    child_done = True
+                done_ms = now_ms()
+            elif now_ms() - start_ms > timeout_ms:
+                timed_out = True
+                _ = external_call["kill", c_int](c_int(-pid), c_int(SIGTERM))
+                _ = external_call["usleep", c_int](c_int(200000))
+                _ = external_call["kill", c_int](c_int(-pid), c_int(SIGKILL))
+                _ = external_call["waitpid", c_int](
+                    pid, Pointer(to=status), c_int(0)
+                )
+                child_done = True
+                done_ms = now_ms()
         else:
-            post_done_ms += 50
-            if post_done_ms > 3000:
+            if now_ms() - done_ms > 3000:
                 break
     _ = external_call["close", c_int](rfd)
     _ = external_call["free", c_int](pfd_mem.value())
