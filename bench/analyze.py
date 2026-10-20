@@ -16,7 +16,7 @@ LOGS_BASE = os.path.join(ROOT, "bench")
 # A row is infra-poisoned when its log ends on a transport/endpoint failure:
 # the run measured an outage, not the harness. CURL_ERROR:28 is excluded —
 # it is a generation exceeding the request budget (server alive, real result).
-INFRA_RE = re.compile(r"CURL_ERROR:(?!28)|InternalServerError|Connection\s+error")
+INFRA_RE = re.compile(r"CURL_ERROR:(?!28\b)|InternalServerError|Connection\s+error")
 
 
 def mark_infra(rows, logsdir):

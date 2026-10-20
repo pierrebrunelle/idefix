@@ -102,5 +102,7 @@ or use `./max` from the repo if that matters).
 ## Limits
 
 Single task loop; one bash tool. No streaming, providers, MCP, subagents,
-or sandboxing. The model server is a separate process — the agent never
-manages model lifecycle (`with-max.sh` only wraps startup for you).
+or sandboxing. Command output keeps the first and last halves of the byte
+cap, and invalid UTF-8 in it is replaced with U+FFFD on the wire. The
+model server is a separate process — the agent never manages model
+lifecycle (`with-max.sh` only wraps startup for you).

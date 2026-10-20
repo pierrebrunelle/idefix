@@ -30,7 +30,7 @@ bundle: max
 	install_name_tool -add_rpath @executable_path bundle/max
 
 clean:
-	rm -f max libmax_c.a max_shim.o agent_shim.o vendor/cJSON.o
+	rm -f max libmax_c.a max_shim.o vendor/cJSON.o
 	rm -rf bundle
 
 .PHONY: all test bundle clean

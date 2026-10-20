@@ -1,6 +1,6 @@
 # Minimal native coding agent: one bash tool, one task loop, MAX endpoint.
 
-from std.ffi import external_call, c_int
+from std.ffi import external_call, c_int, c_long, c_size_t
 from std.os import getenv
 from std.sys import argv
 
@@ -92,12 +92,15 @@ def read_file(path: String) raises -> String:
     if not fp:
         raise Error("cannot open " + path)
     _ = external_call["fseek", c_int](fp, c_int(0), c_int(2))
-    var sz = external_call["ftell", c_int](fp)
+    var sz = external_call["ftell", c_long](fp)
+    if sz < 0:
+        _ = external_call["fclose", c_int](fp)
+        raise Error("cannot size " + path)
     _ = external_call["fseek", c_int](fp, c_int(0), c_int(0))
     var buf = List[UInt8](capacity=Int(sz) + 1)
     buf.resize(Int(sz), 0)
-    _ = external_call["fread", c_int](
-        buf.unsafe_ptr(), c_int(1), c_int(sz), fp
+    _ = external_call["fread", c_size_t](
+        buf.unsafe_ptr(), c_size_t(1), c_size_t(sz), fp
     )
     _ = external_call["fclose", c_int](fp)
     return String(unsafe_from_utf8=buf^)

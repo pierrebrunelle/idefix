@@ -35,29 +35,70 @@ def eprint(s: String):
 
 
 def json_quote(s: String) -> String:
-    # Escapes ", \, control chars; multibyte UTF-8 passes through unmodified.
+    # Escapes ", \, control chars. Valid multibyte UTF-8 passes through;
+    # invalid sequences become U+FFFD so binary tool output can't poison
+    # the request body's UTF-8.
     var out = List[UInt8]()
     out.append(0x22)
-    for i in range(s.byte_length()):
-        var b = s.as_bytes()[i]
-        if b == 0x22 or b == 0x5C:
-            out.append(0x5C)
-            out.append(b)
-        elif b == 0x0A:
-            out.append(0x5C); out.append(0x6E)
-        elif b == 0x0D:
-            out.append(0x5C); out.append(0x72)
-        elif b == 0x09:
-            out.append(0x5C); out.append(0x74)
-        elif b < 0x20:
-            var e = String("\\u00")
-            if Int(b) < 16:
-                e += "0"
-            e += String(hex(Int(b))[byte=2:])
-            for j in range(e.byte_length()):
-                out.append(e.as_bytes()[j])
+    var bs = s.as_bytes()
+    var i = 0
+    while i < s.byte_length():
+        var b = Int(bs[i])
+        if b < 0x80:
+            if b == 0x22 or b == 0x5C:
+                out.append(0x5C)
+                out.append(UInt8(b))
+            elif b == 0x0A:
+                out.append(0x5C); out.append(0x6E)
+            elif b == 0x0D:
+                out.append(0x5C); out.append(0x72)
+            elif b == 0x09:
+                out.append(0x5C); out.append(0x74)
+            elif b < 0x20:
+                var e = String("\\u00")
+                if b < 16:
+                    e += "0"
+                e += String(hex(b)[byte=2:])
+                for j in range(e.byte_length()):
+                    out.append(e.as_bytes()[j])
+            else:
+                out.append(UInt8(b))
+            i += 1
+            continue
+        var seqlen = 0
+        if b >= 0xC2 and b <= 0xDF:
+            seqlen = 2
+        elif b >= 0xE0 and b <= 0xEF:
+            seqlen = 3
+        elif b >= 0xF0 and b <= 0xF4:
+            seqlen = 4
+        var ok = seqlen > 0 and i + seqlen <= s.byte_length()
+        if ok:
+            var b1 = Int(bs[i + 1])
+            ok = b1 >= 0x80 and b1 <= 0xBF
+            # E0/ED/F0/F4 tighten the first continuation range to exclude
+            # overlongs, surrogates, and values past U+10FFFF.
+            if ok and b == 0xE0:
+                ok = b1 >= 0xA0
+            elif ok and b == 0xED:
+                ok = b1 <= 0x9F
+            elif ok and b == 0xF0:
+                ok = b1 >= 0x90
+            elif ok and b == 0xF4:
+                ok = b1 <= 0x8F
+            for j in range(2, seqlen):
+                var bj = Int(bs[i + j])
+                if bj < 0x80 or bj > 0xBF:
+                    ok = False
+        if ok:
+            for j in range(seqlen):
+                out.append(bs[i + j])
+            i += seqlen
         else:
-            out.append(b)
+            out.append(0xEF)
+            out.append(0xBF)
+            out.append(0xBD)
+            i += 1
     out.append(0x22)
     return String(unsafe_from_utf8=out^)
 

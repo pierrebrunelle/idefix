@@ -9,6 +9,7 @@ export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
 BASE="${MAX_BASE_URL:-http://127.0.0.1:8000/v1}"
 
 started=""
+LOG=""
 if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
     if ! "$MAXCLI" --help 2>&1 | grep -qi serve; then
         echo "with-max: $MAXCLI has no 'serve' command (the agent binary shadows Modular's max?); set MAXCLI=/path/to/modular-max" >&2
@@ -34,5 +35,6 @@ if ! curl -sf -m 2 "$BASE/models" >/dev/null; then
 fi
 ./max "$@"
 rc=$?
+[ -n "$LOG" ] && rm -f "$LOG"
 # Plain exit so the EXIT trap fires: a server we started gets killed here.
 exit "$rc"

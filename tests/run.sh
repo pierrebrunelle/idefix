@@ -205,4 +205,11 @@ rm -rf /tmp/max-state-perms
 run_mode normal ./max --repo . --state-dir /tmp/max-state-perms "task" >/dev/null 2>&1
 check "session dir perms" "rwx------" "$(ls -ld /tmp/max-state-perms/sessions/*/ | cut -c2-10)"
 
+# 29. binout: invalid UTF-8 in tool output is sanitized, request still parses
+out=$(run_mode binout ./max --repo . "task" 2>/dev/null); rc=$?
+check "binout exit" 0 "$rc"
+check "binout answer" "Done." "$out"
+grep -q "STUB tool json ok: True" /tmp/stub_binout.log && echo "PASS binout json" || { echo "FAIL binout json"; cat /tmp/stub_binout.log; FAIL=1; }
+grep -q "$(printf '\357\277\275')" /tmp/stub_binout.log && echo "PASS binout sanitized" || { echo "FAIL binout sanitized"; FAIL=1; }
+
 exit $FAIL

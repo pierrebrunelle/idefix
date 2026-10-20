@@ -23,6 +23,7 @@ better() {  # better NEW BEST -> exit 0 if new improves on best
 score() { ./score.sh 2>/dev/null | tail -1; }
 
 best="$(score)"
+[ -n "$best" ] || { echo "score.sh printed no baseline score"; exit 1; }
 echo "baseline score: $best" | tee experiments.tsv
 echo -e "iter\tscore\tbest\tverdict" >> experiments.tsv
 
@@ -33,11 +34,15 @@ for i in $(seq 1 "$ITERS"); do
     "Iteration $i. Current best score: $best. Improve the artifact, then run ./score.sh yourself to see the score." \
     > "logs/iter-$i.log" 2>&1
   new="$(score)"
-  if better "$new" "$best"; then
+  if [ -n "$new" ] && better "$new" "$best"; then
     verdict="KEEP"; best="$new"
     git add -A && git commit -qm "iter $i: KEEP score=$new"
   else
-    verdict="DROP"; git reset -q --hard HEAD
+    verdict="DROP"
+    # reset alone leaves new untracked files behind; clean them too
+    # (logs/ is exempt so this iteration's log survives the discard).
+    git reset -q --hard HEAD
+    git clean -fdq -e logs/
   fi
   printf "%s\t%s\t%s\t%s\n" "$i" "$new" "$best" "$verdict" | tee -a experiments.tsv
 done

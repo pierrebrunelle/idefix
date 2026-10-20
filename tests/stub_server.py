@@ -3,7 +3,7 @@
 
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length
-       | flaky | bigusage | ctxerr | ctxbig | loop | weirdname
+       | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
 """
 import json
 import sys
@@ -123,6 +123,11 @@ class Handler(BaseHTTPRequestHandler):
                     calls=[tool_call("call_1", "echo big")],
                     finish="tool_calls",
                     usage={"prompt_tokens": 60000, "completion_tokens": 8},
+                )
+            elif MODE == "binout":
+                resp = msg_response(
+                    calls=[tool_call("call_o", "printf '\\377\\376bin'")],
+                    finish="tool_calls",
                 )
             elif MODE == "weirdname":
                 resp = msg_response(
