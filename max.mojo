@@ -11,10 +11,15 @@ comptime SYSTEM_PROMPT = """You are a coding agent working inside a repository o
 
 Rules:
 - Act through the tool. Do not describe commands; issue them.
-- The host runs macOS/BSD userland: use portable commands (sed -i '' not sed -i; no GNU-only flags). If a command errors, change the command, not the plan.
 - Inspect before editing: read files, then change them. Write files with here-docs or scripts; verify changes with diffs or tests.
 - Fix the root cause; do not skip tests or add workarounds.
 - When the task is verifiably done, reply with a short summary of what changed and how it was verified. Do not call the tool again."""
+
+
+comptime SYSTEM_SUFFIX = """
+- The host runs macOS/BSD userland: portable commands only (sed -i '' not sed -i; no GNU-only flags). If a command errors, change the command, not the plan.
+- An exit_code of 0 does not prove an edit changed the file (a non-matching sed edits nothing); the result's changed_files field lists what actually changed. Confirm before re-running tests.
+- A reply without a tool call ends the run."""
 
 
 comptime TOOLS = '{"type":"function","function":{"name":"bash","description":"Run a bash command in the repository directory. Returns exit code and bounded merged stdout/stderr output.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"The bash command to run"}},"required":["command"],"additionalProperties":false}}}'
@@ -590,6 +595,24 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 else:
                                     st.last_cmd = cmd
                                     st.cmd_repeats = 0
+                            var mark = String("")
+                            if not cfg.bare:
+                                # hash snapshot so "rewritten" and "changed" are
+                                # different answers; sed -i exits 0 on a no-match
+                                mark = cfg.session_dir + "/cmdmark"
+                                if cfg.session_dir == "":
+                                    mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000))
+                                var snap = "find . "
+                                if cfg.session_dir.find(cfg.repo + "/") == 0:
+                                    snap += "-path './" + String(
+                                        cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
+                                    ) + "' -prune -o "
+                                snap += (
+                                    "-name .git -prune -o -name .max-state -prune -o "
+                                    + "-type f -size -5M -exec md5 -r {} + 2>/dev/null"
+                                    + " | sort > " + mark
+                                )
+                                _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
                             var rc = bindings.run_capture(
                                 cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms, True
                             )
@@ -618,6 +641,30 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     + ',"cmd":' + bindings.json_quote(cmd)
                                     + ',"count":' + String(count) + "}",
                                 )
+                            if mark != "":
+                                # same snapshot again; lines present on only one
+                                # side are created, modified or deleted files
+                                var dcmd = "find . "
+                                if cfg.session_dir.find(cfg.repo + "/") == 0:
+                                    dcmd += "-path './" + String(
+                                        cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
+                                    ) + "' -prune -o "
+                                dcmd += (
+                                    "-name .git -prune -o -name .max-state -prune -o "
+                                    + "-type f -size -5M -exec md5 -r {} + 2>/dev/null"
+                                    + " | sort > " + mark + ".after; "
+                                    + "{ comm -13 " + mark + " " + mark + ".after; "
+                                    + "comm -23 " + mark + " " + mark + ".after; }"
+                                    + " | cut -d' ' -f2- | sort -u | head -40"
+                                )
+                                var fr = bindings.run_capture(
+                                    dcmd, cfg.repo, 4096, 30000, False
+                                )
+                                if fr[1] == 0:
+                                    result += (
+                                        ',"changed_files":'
+                                        + bindings.json_quote(String(fr[0].strip()))
+                                    )
                             result += "}"
                         bindings.cjson_del(aj)
                 push_msg(cfg, history, tool_msg(cid, result))
@@ -711,6 +758,7 @@ def main() raises:
     var system = SYSTEM_PROMPT
     var repo_docs = String("")
     if not cfg.bare:
+        system += SYSTEM_SUFFIX
         var doc_names = List[String]("AGENTS.md", "CLAUDE.md", __list_literal__=NoneType())
         for nm in doc_names:
             try:

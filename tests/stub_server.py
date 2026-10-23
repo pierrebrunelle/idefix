@@ -4,7 +4,7 @@
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | length
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
-       | chunked | envdump
+       | chunked | envdump | cfdiff
 """
 import json
 import sys
@@ -150,6 +150,11 @@ class Handler(BaseHTTPRequestHandler):
             elif MODE == "envdump":
                 resp = msg_response(
                     calls=[tool_call("call_e", "env")],
+                    finish="tool_calls",
+                )
+            elif MODE == "cfdiff":
+                resp = msg_response(
+                    calls=[tool_call("call_c", "echo cf > cf-out.txt")],
                     finish="tool_calls",
                 )
             elif MODE == "weirdname":
