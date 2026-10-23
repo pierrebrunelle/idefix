@@ -64,30 +64,6 @@ def rewrite_response(body):
     return json.dumps(resp).encode()
 
 
-def to_sse(resp_json):
-    resp = json.loads(resp_json)
-    out = []
-    for i, choice in enumerate(resp.get("choices", [])):
-        msg = choice.get("message", {})
-        delta = {"role": "assistant"}
-        if msg.get("content"):
-            delta["content"] = msg["content"]
-        if msg.get("tool_calls"):
-            delta["tool_calls"] = msg["tool_calls"]
-        chunk = {"id": resp.get("id"), "object": "chat.completion.chunk",
-                 "created": resp.get("created"), "model": resp.get("model"),
-                 "choices": [{"index": i, "delta": delta, "finish_reason": None}]}
-        out.append(f"data: {json.dumps(chunk)}\n\n")
-        end = {"id": resp.get("id"), "object": "chat.completion.chunk",
-               "created": resp.get("created"), "model": resp.get("model"),
-               "choices": [{"index": i, "delta": {},
-                            "finish_reason": choice.get("finish_reason", "stop")}],
-               "usage": resp.get("usage")}
-        out.append(f"data: {json.dumps(end)}\n\n")
-    out.append("data: [DONE]\n\n")
-    return "".join(out).encode()
-
-
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 

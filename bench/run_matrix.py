@@ -56,7 +56,7 @@ def mojo_cmd(repo, task_text, transcript, globs):
     return [
         os.path.join(ROOT, "max"),
         "--repo", repo,
-        "--max-requests", "15",
+        "--max-requests", os.environ.get("BENCH_MAX_REQ", "15"),
         "--max-seconds", str(AGENT_MAX_SECONDS),
         "--temperature", str(TEMPERATURE),
         "--transcript", transcript,

@@ -11,6 +11,7 @@ comptime SYSTEM_PROMPT = """You are a coding agent working inside a repository o
 
 Rules:
 - Act through the tool. Do not describe commands; issue them.
+- The host runs macOS/BSD userland: use portable commands (sed -i '' not sed -i; no GNU-only flags). If a command errors, change the command, not the plan.
 - Inspect before editing: read files, then change them. Write files with here-docs or scripts; verify changes with diffs or tests.
 - Fix the root cause; do not skip tests or add workarounds.
 - When the task is verifiably done, reply with a short summary of what changed and how it was verified. Do not call the tool again."""
@@ -398,7 +399,6 @@ def is_ctx_error(resp: String) -> Bool:
     return low.find("context") >= 0 or low.find("too long") >= 0
 
 
-
 struct TurnStats(Copyable):
     var requests: Int
     var commands: Int
@@ -442,7 +442,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
         vlog(cfg, "request " + String(st.requests) + " -> http " + String(code))
         var attempt = 0
         while (code == 0 or code >= 500) and attempt < cfg.retries and st.requests < cfg.max_requests:
-            # transport error or server 5xx: backoff retry for long runs
+            # code 0 is a transport error; 5xx is retryable
             if bindings.now_seconds() > deadline:
                 break
             attempt += 1
@@ -621,7 +621,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                             result += "}"
                         bindings.cjson_del(aj)
                 push_msg(cfg, history, tool_msg(cid, result))
-            # fill unexecuted calls beyond cap with error results
+            # every call needs a tool result on the wire or the next request 400s
             var total = bindings.cjson_len(calls)
             for j in range(n, total):
                 var call = bindings.cjson_arr(calls, j)
@@ -730,7 +730,6 @@ def main() raises:
     var history = initial_history
     var exit_code = 0
 
-    # resume: replay msg events from a journal into history
     var resume_src = cfg.resume_file
     if resume_src == "" and cfg.cont:
         resume_src = cfg.journal_path
