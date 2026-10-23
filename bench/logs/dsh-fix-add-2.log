@@ -1,7 +1,0 @@
-{"type":"session","sessionId":"session-287a37a1-df82-4f48-981f-932125e074f5","cwd":"/private/var/folders/s4/0zdx499s6sv3_0jll6ccdbh00000gn/T/bench-fix-add-gskm1yu2"}
-{"type":"status","phase":"turn_start","turn":1}
-{"type":"status","phase":"step_start","turn":1,"step":1}
-{"type":"text","text":"None of the above\n"}
-{"type":"status","phase":"step_end","turn":1,"step":1}
-{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"completed"}}
-{"type":"final","text":"None of the above\n"}

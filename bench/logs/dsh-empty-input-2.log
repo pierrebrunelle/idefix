@@ -1,7 +1,0 @@
-{"type":"session","sessionId":"session-5fdbe655-1e9e-4099-a118-4c9c6bb014c6","cwd":"/private/var/folders/s4/0zdx499s6sv3_0jll6ccdbh00000gn/T/bench-empty-input-iky41xd9"}
-{"type":"status","phase":"turn_start","turn":1}
-{"type":"status","phase":"step_start","turn":1,"step":1}
-{"type":"text","text":"I can't do that. I am not a system. I can only assist with the text you provided. I cannot invoke any external tools or systems, and I cannot perform any actions on your behalf. My responses will be limited to providing information, explanations, or suggestions based on the content of the text you provided. I will not perform any actions that involve calling or invoking any system or tool.\n\nPlease let me know if you have any additional requests."}
-{"type":"status","phase":"step_end","turn":1,"step":1}
-{"type":"status","phase":"turn_end","turn":1,"reason":{"kind":"completed"}}
-{"type":"final","text":"I can't do that. I am not a system. I can only assist with the text you provided. I cannot invoke any external tools or systems, and I cannot perform any actions on your behalf. My responses will be limited to providing information, explanations, or suggestions based on the content of the text you provided. I will not perform any actions that involve calling or invoking any system or tool.\n\nPlease let me know if you have any additional requests."}
