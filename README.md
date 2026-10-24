@@ -71,10 +71,11 @@ Rows are verified by each task's own script, not the model's say-so
 - 6-task suite, Qwen3-4B, 2 reps: aider 100%, **max --bare 75%**,
   pi 58%; our binary runs at ~16 MB peak RSS vs aider's ~250 MB.
 - `long-horizon` (6 bugs across 3 files), Qwen3-14B: aider and pi
-  pass; max did not. Free-form `bash` let the model report an edit
-  that never landed, where aider's patch format fails loudly. Tool
-  results now carry `changed_files`, so a no-op edit cannot read as
-  success.
+  pass; max went 0/4. Free-form `bash` let the model report an edit
+  that never landed, where aider's patch format fails loudly - so tool
+  results now carry `changed_files` and a no-op edit cannot read as
+  success. With that fixed the remaining gap is the model's:
+  `snake_to_camel` got rewritten two dozen ways, all wrong.
 
 Method and repro: `bench/README.md`.
 

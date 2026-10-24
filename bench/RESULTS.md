@@ -97,22 +97,37 @@ above, where both passed.
 
 | arm | pass | wall | requests | commands | peak RSS | ended |
 | --- | --- | --- | --- | --- | --- | --- |
-| max rep1 | 0 | 880.2s | 16 | 49 | 16.1 MB | wall; `http 0` retries |
-| max rep2 | 0 | 879.7s | 17 | 36 | 16.1 MB | wall; unexecuted tool_call |
-| aider rep1 | 0 | 900.2s | - | - | 231.0 MB | watchdog; `$$` degenerate output |
-| aider rep2 | 0 | 900.2s | - | - | 219.9 MB | watchdog; same shape |
-| pi rep1 | 0 | 15.1s | 4 | - | 120.0 MB | stream ended w/o finish_reason x3 |
-| pi rep2 | 0 | 15.8s | 4 | - | 130.2 MB | same shape |
+| max | 0 | 880.2s | 16 | 49 | 16.1 MB | wall; `http 0` retries |
+| max | 0 | 879.7s | 17 | 36 | 16.1 MB | wall; unexecuted tool_call |
+| max | 0 | 880.0s | 19 | 43 | 15.9 MB | wall; unexecuted tool_call |
+| max | 0 | 300.9s | 9 | 15 | 16.5 MB | false finish (plan text) |
+| aider | 0 | 900.2s | - | - | 231.0 MB | watchdog; `$$` degenerate output |
+| aider | 0 | 900.2s | - | - | 219.9 MB | watchdog; same shape |
+| pi | 0 | 15.1s | 4 | - | 120.0 MB | stream ended w/o finish_reason x3 |
+| pi | 0 | 15.8s | 4 | - | 130.2 MB | same shape |
 
 What the fix bought, measurably: `changed_files` removed the
-edit-didn't-land failure. rep1 made 24 real edits to `text.py` (25
-commands honestly reported as no-ops); rep2 made 4. The new bottleneck
-is semantic - the model rewrote `snake_to_camel` ~24 times with wrong
-logic (`capitalize()`, `title()` variants) and never reached bugs 2-6.
-aider's healthy-regime pass took ~763 tokens; max burned ~2,900
-iterating. Writing correct code through shell edit commands still costs
-more model capability than a patch format, at least at 5 tok/s where
-every attempt is expensive.
+edit-didn't-land failure - rep1 made 24 real edits to `text.py` (25
+commands honestly reported as no-ops), later reps similar. The new
+bottleneck is semantic: the model rewrote `snake_to_camel` ~24 times
+with wrong logic (`capitalize()`, `title()` variants) and never
+reached bugs 2-6. aider's healthy-regime pass took ~763 tokens; max
+burned ~2,900 iterating. Three tail failure modes remain:
+
+- **false finish**: a mid-task plan with no tool call ends the run at
+  exit 0 (1 of 4 reps). A bounded continue-nudge was built and
+  reverted: it taxed +2 requests on every successful task and never
+  fired in its trial run. Rescue also would not have flipped the
+  verdict here - the model's `snake_to_camel` logic stayed wrong.
+- **unexecuted tool_call**: MAX's Hermes parser occasionally fails to
+  structure a `<tool_call>`, the text lands in `content`, and the turn
+  ends on what was meant to be an action. A lenient rescue (parse the
+  tag ourselves) is ~30 lines but only matters when the wall has not
+  already hit - it would not have saved these reps either.
+- **semantic loop**: same wrong fix retried with cosmetic variations.
+  Writing correct code through shell edit commands costs more model
+  capability than a patch format, at least at ~5 tok/s where every
+  attempt is expensive.
 
 ## Methodology notes
 
