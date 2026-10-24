@@ -1,3 +1,5 @@
+<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/701e3fd8-6e4a-425f-b450-2f76bffb1d7c" />
+
 # max
 
 A minimal coding agent in Mojo: one ~255 KB binary that takes a task,
