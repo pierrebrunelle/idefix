@@ -125,6 +125,18 @@ out=$(run_mode sednoop ./max --repo . "task" 2>/dev/null); rc=$?
 check "sednoop exit" 0 "$rc"
 grep -q "may not have applied" /tmp/stub_sednoop.log && echo "PASS noop warning" || { echo "FAIL noop warning"; cat /tmp/stub_sednoop.log; FAIL=1; }
 
+# 13d. medit: `max edit` reachable on scrubbed PATH, applies unique SEARCH block
+out=$(run_mode medit ./max --repo . "task" 2>/dev/null); rc=$?
+check "medit exit" 0 "$rc"
+grep -q "block(s) applied" /tmp/stub_medit.log && grep -q "x = 9" /tmp/stub_medit.log && echo "PASS medit apply" || { echo "FAIL medit apply"; cat /tmp/stub_medit.log; FAIL=1; }
+rm -f e.py
+
+# 13e. ediff: changed file -> compact unified diff in tool result (non-bare)
+out=$(run_mode ediff ./max --repo . "task" 2>/dev/null); rc=$?
+check "ediff exit" 0 "$rc"
+grep -q '"diff"' /tmp/stub_ediff.log && grep -q "+a" /tmp/stub_ediff.log && echo "PASS diff echo" || { echo "FAIL diff echo"; cat /tmp/stub_ediff.log; FAIL=1; }
+rm -f d.txt
+
 # 13d. sandbox (macOS seatbelt): writes outside repo denied, inside allowed
 if command -v sandbox-exec >/dev/null 2>&1; then
     rm -f .sbx-ok "$HOME/.sbx-denied-xyz"

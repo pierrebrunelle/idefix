@@ -1,6 +1,6 @@
 # Minimal native coding agent: one bash tool, one task loop, MAX endpoint.
 
-from std.ffi import external_call, c_int, c_long, c_size_t
+from std.ffi import external_call, c_int, c_long, c_size_t, c_ssize_t
 from std.os import getenv
 from std.sys import argv
 
@@ -17,6 +17,7 @@ Rules:
 
 
 comptime SYSTEM_SUFFIX = """
+- Prefer `max edit FILE <<'EOF'` with <<<<<<< SEARCH / ======= / >>>>>>> REPLACE blocks for file edits; it fails loudly when the search text does not match.
 - The host runs macOS/BSD userland: portable commands only (sed -i '' not sed -i; no GNU-only flags). If a command errors, change the command, not the plan.
 - An exit_code of 0 does not prove an edit changed the file (a non-matching sed edits nothing); the result's changed_files field lists what actually changed. Confirm before re-running tests.
 - A reply without a tool call ends the run."""
@@ -55,6 +56,7 @@ struct Config(Copyable):
     var journal_path: String
     var bare: Bool
     var sandbox: Bool
+    var bindir: String
 
     def __init__(out self):
         self.repo = "."
@@ -86,6 +88,7 @@ struct Config(Copyable):
         self.journal_path = ""
         self.bare = False
         self.sandbox = False
+        self.bindir = ""
 
 
 def usage() -> String:
@@ -228,6 +231,7 @@ def parse_args() raises -> Config:
     if cfg.model == "":
         die("MAX_MODEL is not set. " + usage(), 64)
     cfg.bearer = getenv("MAX_API_KEY")
+    cfg.bindir = bindings.self_dir()
     var acc = cfg.repo
     var accrc = external_call["access", c_int](acc.as_c_string_span().ptr(), c_int(0))
     if accrc != 0:
@@ -651,6 +655,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                             var mark = String("")
                             var hasher = String("md5 -r")
                             var prof = String("")
+                            var clone_ok = False
+                            var tree = String("")
                             if doom_now:
                                 result = (
                                     '{"error":"same command repeated 5 times;'
@@ -689,6 +695,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         + " {} + 2>/dev/null | sort > " + mark
                                     )
                                     _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
+                                    tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000))
+                                    var cr = bindings.run_capture(
+                                        "rm -rf " + tree + "; cp -Rc . " + tree,
+                                        cfg.repo, 64, 60000, False,
+                                    )
+                                    clone_ok = cr[1] == 0
                                 var cmd_timeout = cfg.max_command_ms
                                 var left_ms = (deadline - bindings.now_seconds()) * 1000
                                 if left_ms < cmd_timeout:
@@ -701,8 +713,11 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         tmp = "/private/tmp"
                                     prof = sandbox_profile(bindings.realpath(cfg.repo), tmp)
                                     vlog(cfg, "profile: " + prof)
+                                var pdir = String("")
+                                if not cfg.bare:
+                                    pdir = cfg.bindir
                                 var rc = bindings.run_capture(
-                                    cmd, cfg.repo, cfg.max_output_bytes, cmd_timeout, True, prof
+                                    cmd, cfg.repo, cfg.max_output_bytes, cmd_timeout, True, prof, pdir
                                 )
                                 vlog(
                                     cfg,
@@ -755,6 +770,25 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                             ',"changed_files":'
                                             + bindings.json_quote(cf)
                                         )
+                                        if cf != "" and clone_ok:
+                                            var d2 = (
+                                                "for f in " + cf.replace("\n", " ")
+                                                + '; do diff -u "' + tree + '/$f" "$f"'
+                                                + " 2>/dev/null || diff -u /dev/null \"$f\""
+                                                + " 2>/dev/null; done | head -120"
+                                                + "; rm -rf " + tree
+                                            )
+                                            var dr = bindings.run_capture(
+                                                d2, cfg.repo, 8192, 15000, False
+                                            )
+                                            var dtxt = String(dr[0].strip())
+                                            if dtxt != "":
+                                                if dtxt.byte_length() > 4000:
+                                                    var dcap = String(dtxt[byte= : 4000])
+                                                    dtxt = dcap^
+                                                result += (
+                                                    ',"diff":' + bindings.json_quote(dtxt)
+                                                )
                                         if cf == "" and rc[1] == 0 and looks_write(cmd):
                                             result += (
                                                 ',"warning":"exit 0 but no files'
@@ -843,8 +877,114 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
     external_call["exit", c_int](c_int(code))
 
 
+def read_stdin() -> String:
+    var out = String("")
+    var buf = List[UInt8](capacity=8192)
+    buf.resize(8192, 0)
+    while True:
+        var n = external_call["read", c_ssize_t](
+            c_int(0), buf.unsafe_ptr(), c_size_t(8192)
+        )
+        if n <= 0:
+            break
+        out += String(unsafe_from_utf8=buf[: Int(n)])
+    return out
+
+
+def find_all(hay: String, needle: String) -> List[Int]:
+    var hits = List[Int]()
+    var off = 0
+    while True:
+        var i = hay.find(needle, off)
+        if i < 0:
+            break
+        hits.append(i)
+        off = i + 1
+    return hits^
+
+
+def count_lines(s: String, upto: Int) -> Int:
+    var n = 1
+    for i in range(min(upto, s.byte_length())):
+        if s[byte= i] == "\n":
+            n += 1
+    return n
+
+
+def run_edit(path: String) raises -> Int:
+    # max edit FILE < blocks: aider-style <<<<<<< SEARCH/=======/>>>>>>>
+    # REPLACE pairs on stdin. Applies all blocks in memory, then writes
+    # once - a failed block changes nothing.
+    var text = String("")
+    try:
+        text = read_file(path)
+    except e:
+        bindings.eprint("max edit: cannot read " + path + ": " + String(e))
+        return 1
+    var spec = read_stdin()
+    var pos = 0
+    var applied = 0
+    var S = "<<<<<<< SEARCH"
+    var M = "======="
+    var E = ">>>>>>> REPLACE"
+    while True:
+        var sb = spec.find(S, pos)
+        if sb < 0:
+            break
+        var mb = spec.find("\n" + M + "\n", sb)
+        var eb = spec.find("\n" + E, mb if mb >= 0 else sb)
+        if mb < 0 or eb < 0:
+            bindings.eprint("max edit: malformed block (missing ======= or >>>>>>> REPLACE)")
+            return 1
+        var old = String(spec[byte= sb + S.byte_length() + 1 : mb])
+        var new = String(spec[byte= mb + M.byte_length() + 2 : eb])
+        var hits = find_all(text, old)
+        if len(hits) != 1:
+            var first = String(old.split("\n")[0])
+            if first == "" and old.byte_length() > 1:
+                first = String(old.split("\n")[1])
+            var fhits = find_all(text, first)
+            var near = String("")
+            for i in range(min(len(fhits), 4)):
+                near += "," + String(count_lines(text, fhits[i]))
+            bindings.eprint(
+                "max edit: SEARCH matched " + String(len(hits)) + " times in " + path
+                + (" (anchors near lines " + near[byte=1:] + ")" if len(fhits) > 0 else "")
+            )
+            return 1
+        text = String(
+            text[byte= : hits[0]] + new + text[byte= hits[0] + old.byte_length() :]
+        )
+        applied += 1
+        pos = eb + E.byte_length()
+    if applied == 0:
+        bindings.eprint("max edit: no SEARCH/REPLACE blocks on stdin")
+        return 1
+    # syntax gate: never write python that does not compile
+    if path.endswith(".py"):
+        var has_py = bindings.run_capture("command -v python3", ".", 64, 5000, False)
+        if has_py[1] == 0 and String(has_py[0].strip()) != "":
+            var tmp = path + ".maxedit-tmp"
+            _ = bindings.write_file(tmp, text)
+            var chk = bindings.run_capture(
+                "python3 -m py_compile " + tmp, ".", 4096, 15000, False
+            )
+            _ = bindings.run_capture("rm -f " + tmp, ".", 64, 5000, False)
+            if chk[1] != 0:
+                bindings.eprint("max edit: result does not compile:\n" + chk[0].strip())
+                return 1
+    if not bindings.write_file(path, text):
+        bindings.eprint("max edit: cannot write " + path)
+        return 1
+    print("ok " + path + " (" + String(applied) + " block(s) applied)")
+    return 0
+
+
 def main() raises:
     _ = external_call["shim_install_signal_handlers", c_int]()
+    var a0 = argv()
+    if len(a0) == 3 and String(a0[1]) == "edit":
+        external_call["exit", c_int](c_int(run_edit(String(a0[2]))))
     var cfg = parse_args()
     var st = TurnStats()
     st.start_s = bindings.now_seconds()

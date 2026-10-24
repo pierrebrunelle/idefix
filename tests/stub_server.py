@@ -2,7 +2,7 @@
 """Stub OpenAI-compatible endpoint for max tests. Not shipped.
 
 Usage: stub_server.py PORT MODE
-Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length
+Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | medit | ediff
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff
 """
@@ -166,6 +166,22 @@ class Handler(BaseHTTPRequestHandler):
             elif MODE == "cfdiff":
                 resp = msg_response(
                     calls=[tool_call("call_c", "echo cf > cf-out.txt")],
+                    finish="tool_calls",
+                )
+            elif MODE == "medit":
+                resp = msg_response(
+                    calls=[tool_call(
+                        "call_e",
+                        "printf 'x = 1\n' > e.py\n"
+                        "max edit e.py <<'EOF'\n"
+                        "<<<<<<< SEARCH\nx = 1\n=======\nx = 9\n>>>>>>> REPLACE\n"
+                        "EOF\ncat e.py",
+                    )],
+                    finish="tool_calls",
+                )
+            elif MODE == "ediff":
+                resp = msg_response(
+                    calls=[tool_call("call_d", "printf 'a\nb\nc\n' > d.txt")],
                     finish="tool_calls",
                 )
             elif MODE == "weirdname":

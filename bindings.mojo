@@ -480,9 +480,14 @@ def strip_markup(content: String) -> String:
 
 
 def c_argv(mut args: List[String]) raises -> raw_ptr:
+    # strdup each arg: a c-string span ptr can dangle after the expression
+    # that produces it, so store owned copies.
     var ptrs = List[UInt64]()
     for i in range(len(args)):
-        ptrs.append(UInt64(Int(args[i].as_c_string_span().ptr())))
+        var dup = external_call["strdup", cstr_ptr](
+            args[i].as_c_string_span().ptr()
+        )
+        ptrs.append(UInt64(Int(dup.value())))
     ptrs.append(0)
     var mem = external_call["calloc", raw_ptr](c_size_t(len(args) + 1), c_size_t(8))
     if not mem:
@@ -493,6 +498,23 @@ def c_argv(mut args: List[String]) raises -> raw_ptr:
     return mem
 
 
+def self_dir() -> String:
+    var buf = external_call["calloc", raw_ptr](c_size_t(4096), c_size_t(1))
+    if not buf:
+        return ""
+    var sz = external_call["calloc", raw_ptr](c_size_t(4), c_size_t(1))
+    var out = String("")
+    sz.value().unsafe_bitcast[UInt32]()[0] = 4096
+    if external_call["_NSGetExecutablePath", c_int](buf.value(), sz.value()) == 0:
+        var p = String(unsafe_from_utf8_ptr=buf.value().unsafe_bitcast[UInt8]())
+        var sl = p.rfind("/")
+        if sl > 0:
+            out = String(p[byte= : sl])
+    _ = external_call["free", c_int](buf.value())
+    _ = external_call["free", c_int](sz.value())
+    return out
+
+
 def run_capture(
     command: String,
     cwd: String,
@@ -500,6 +522,7 @@ def run_capture(
     timeout_ms: Int,
     scrub_env: Bool,
     profile: String = "",
+    path_dir: String = "",
 ) raises -> Tuple[String, Int, Int]:
     var args: List[String]
     if profile == "":
@@ -541,6 +564,21 @@ def run_capture(
         var exe = args[0]
         if scrub_env:
             var envp = external_call["shim_scrubbed_env", raw_ptr]()
+            if path_dir != "":
+                var slots = envp.value().unsafe_bitcast[cstr_ptr]()
+                var i = 0
+                while True:
+                    var e = slots[i]
+                    if not e:
+                        break
+                    var s = String(unsafe_from_utf8_ptr=e.value())
+                    if s.find("PATH=") == 0:
+                        var news = String("PATH=" + path_dir + ":" + s[byte=5:])
+                        slots[i] = external_call["strdup", cstr_ptr](
+                            news.as_c_string_span().ptr()
+                        )
+                        break
+                    i += 1
             _ = external_call["execve", c_int](
                 exe.as_c_string_span().ptr(), argv, envp
             )
