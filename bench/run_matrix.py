@@ -34,8 +34,9 @@ TIMEOUT_S = int(os.environ.get("BENCH_TIMEOUT", "420"))
 AGENT_MAX_SECONDS = TIMEOUT_S - 20  # inner budget must fire before watchdog
 MODEL = os.environ.get("MAX_MODEL", "")
 BASE = os.environ.get("MAX_BASE_URL", "http://127.0.0.1:8000/v1")
-# pi and dsh use native OpenAI tool calling; bench/toolcall_proxy.py
-# translates Qwen's Hermes <tool_call> text into structured tool_calls.
+# pi and dsh use native OpenAI tool calling; toolcall_proxy.py (in
+# max-results/compare/) translates Qwen's Hermes <tool_call> text into
+# structured tool_calls.
 TOOLCALL_BASE = os.environ.get("BENCH_TOOLCALL_BASE", "http://127.0.0.1:8001/v1")
 # external arms (aider, pi, dsh, opencode) read provider configs from
 # EXT_DIR; those files live in pierrebrunelle/max-results/compare/
