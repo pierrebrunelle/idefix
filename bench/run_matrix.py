@@ -37,12 +37,17 @@ BASE = os.environ.get("MAX_BASE_URL", "http://127.0.0.1:8000/v1")
 # pi and dsh use native OpenAI tool calling; bench/toolcall_proxy.py
 # translates Qwen's Hermes <tool_call> text into structured tool_calls.
 TOOLCALL_BASE = os.environ.get("BENCH_TOOLCALL_BASE", "http://127.0.0.1:8001/v1")
+# external arms (aider, pi, dsh, opencode) read provider configs from
+# EXT_DIR; those files live in pierrebrunelle/max-results/compare/
+EXT_DIR = os.environ.get("BENCH_EXT_DIR", os.path.join(ROOT, "bench"))
 BENCH_VERSION = 2
 TEMPERATURE = 0.6
 DEFAULT_PROTECTED = ["test_*"]
 USAGE = ("usage: run_matrix.py [reps] [harness,...]\n"
+         "  harnesses: mojo, max, ref, aider, pi, dsh, opencode\n"
          "  env: MAX_MODEL (required), MAX_BASE_URL, BENCH_TOOLCALL_BASE,\n"
-         "       BENCH_RESULTS, BENCH_LOGS, BENCH_TIMEOUT, BENCH_TASKS")
+         "       BENCH_RESULTS, BENCH_LOGS, BENCH_TIMEOUT, BENCH_TASKS,\n"
+         "       BENCH_MAX_REQ, BENCH_EXT_DIR")
 
 
 def model_slug():
@@ -65,7 +70,7 @@ def mojo_cmd(repo, task_text, transcript, globs):
     ], {}
 
 
-def maxv2_cmd(repo, task_text, transcript, globs):
+def max_cmd(repo, task_text, transcript, globs):
     # same arm as mojo minus --bare: journal, compaction and retries stay on
     cmd, env = mojo_cmd(repo, task_text, transcript, globs)
     cmd.remove("--bare")
@@ -133,11 +138,11 @@ def dsh_cmd(repo, task_text, transcript, globs):
         task_text,
     ], {
         "DSH_MAX_API_KEY": "dummy",
-        "DSH_HOME": os.path.join(ROOT, "bench", "dsh-home"),
+        "DSH_HOME": os.path.join(GEN_DIR, "dsh-home"),
     }
 
 
-HARNESS = {"mojo": mojo_cmd, "maxv2": maxv2_cmd, "ref": ref_cmd, "aider": aider_cmd,
+HARNESS = {"mojo": mojo_cmd, "max": max_cmd, "ref": ref_cmd, "aider": aider_cmd,
            "pi": pi_cmd, "dsh": dsh_cmd, "opencode": opencode_cmd}
 
 
@@ -151,7 +156,7 @@ def configure_backends(harnesses):
             f.write(f"- name: aider/extra_params\n  extra_params:\n    temperature: {TEMPERATURE}\n")
     if "pi" in harnesses:
         # copy the agent dir (auth.json, models-store.json), rewrite models.json
-        src = os.path.join(ROOT, "bench", "pi-agent")
+        src = os.path.join(EXT_DIR, "pi-agent")
         dst = os.path.join(GEN_DIR, "pi-agent")
         shutil.copytree(src, dst, dirs_exist_ok=True)
         pj = os.path.join(dst, "models.json")
@@ -163,16 +168,33 @@ def configure_backends(harnesses):
             json.dump(cfg, f, indent=2)
             f.write("\n")
     if "dsh" in harnesses:
+        # dsh needs a profile home; render the skeleton under .generated so
+        # nothing per-run is tracked
+        home = os.path.join(GEN_DIR, "dsh-home", "profiles", "headless")
+        os.makedirs(home, exist_ok=True)
+        for name, body in {
+            "cordis.yml": "[]\n",
+            "cordis.patch.yml": "[]\n",
+            "pnpm-workspace.yaml": "packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n",
+            "package.json": json.dumps({
+                "name": "dsh-profile-headless", "private": True,
+                "dependencies": {},
+                "dsh": {"profile": {"bundles": [
+                    "@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"]}},
+            }, indent=2) + "\n",
+        }.items():
+            with open(os.path.join(home, name), "w") as f:
+                f.write(body)
         # patch overlay; samplingParams lives in the committed template. The
         # patterns anchor on the indented model entries so column-0 patch ids
         # can never match, even across a blank line.
-        txt = open(os.path.join(ROOT, "bench", "dsh-max.patch.yml")).read()
+        txt = open(os.path.join(EXT_DIR, "dsh-max.patch.yml")).read()
         txt = re.sub(r"(\n +- id: ).+", rf"\g<1>{MODEL}", txt)
         txt = re.sub(r"(\n    model: ).+", rf"\g<1>{MODEL}", txt)
         with open(os.path.join(GEN_DIR, "dsh-max.patch.yml"), "w") as f:
             f.write(txt)
     if "opencode" in harnesses:
-        oc = json.load(open(os.path.join(ROOT, "bench", "opencode.json")))
+        oc = json.load(open(os.path.join(EXT_DIR, "opencode.json")))
         # model-entry "temperature" is a boolean capability flag, not a value;
         # the sampling value belongs under options (opencode rejects a float)
         oc["provider"]["max"]["models"] = {
@@ -190,6 +212,12 @@ def preflight(harnesses):
     if {"pi", "dsh", "opencode"} & set(harnesses):
         checks.append(("toolcall_proxy", TOOLCALL_BASE, False))
     problems = []
+    if {"aider", "pi", "dsh", "opencode"} & set(harnesses) and not os.path.isdir(
+            os.path.join(EXT_DIR, "pi-agent")):
+        problems.append(
+            f"external-harness files not found in BENCH_EXT_DIR={EXT_DIR}\n"
+            "  (clone pierrebrunelle/max-results and point BENCH_EXT_DIR at its compare/ dir)")
+
     for label, base, check_model in checks:
         try:
             data = json.loads(urllib.request.urlopen(base + "/models", timeout=5).read())

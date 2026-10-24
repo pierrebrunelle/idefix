@@ -4,14 +4,17 @@ Harness comparison matrix: every task in `tasks/` x every harness x N
 reps, rows appended to `results.jsonl`; `analyze.py` renders `RESULTS.md`
 and `charts/<model-slug>/*.svg`.
 
-Harnesses: `mojo` (max `--bare`), `maxv2` (max with journal, compaction
-and retries on), `ref` (`tests/ref_client.py`), `aider`, `pi`, `dsh`,
-`opencode`. mojo/maxv2/ref/aider talk to `max serve` on :8000; pi/dsh/
-opencode go through `toolcall_proxy.py` (default :8001), which rewrites
-Hermes `<tool_call>` text into OpenAI tool_calls. If a `max serve`
-upgrade gains a Hermes `--tool-parser`, point the three proxied
-harnesses at :8000 and drop the proxy (check with a `tools=` request;
-`response_format` alone does not populate `tool_calls`).
+Harnesses: `mojo` (max `--bare`), `max` (the shipped binary), `ref`
+(`tests/ref_client.py`) are the internal arms and run against `max
+serve` on :8000. External arms — `aider`, `pi`, `dsh`, `opencode` —
+need their provider configs from `max-results/compare/` (clone it and
+set `BENCH_EXT_DIR`); preflight aborts on missing files. pi/dsh/
+opencode also go through `toolcall_proxy.py` (same compare/ dir,
+default :8001), which rewrites Hermes `<tool_call>` text into OpenAI
+tool_calls. If a `max serve` upgrade gains a Hermes `--tool-parser`,
+point the three proxied harnesses at :8000 and drop the proxy (check
+with a `tools=` request; `response_format` alone does not populate
+`tool_calls`).
 
 Two proxy modes:
 
@@ -20,7 +23,7 @@ Two proxy modes:
   `PROXY_TEMPLATE_KWARGS` into each request body. Route every arm
   through a proxy with the same kwargs when the model needs template
   flags (e.g. `'{"enable_thinking": false}'` on Qwen3 thinking models),
-  so no arm sees a different template. mojo/maxv2/ref/aider then point
+  so no arm sees a different template. mojo/max/ref/aider then point
   at the passthrough via `MAX_BASE_URL`.
 
 `dsh` has watchdog-timed out on every observed run (Qwen3-4B and 14B);
@@ -32,8 +35,7 @@ dsh/config issue, not a task outcome. Exclude it unless debugging it.
     ./bench/setup.sh                            # tool + pinned-version checks
     max serve --model <org/name>                # Modular max CLI, :8000 - not the
                                               # agent binary (see scripts/with-max.sh)
-    python3 bench/toolcall_proxy.py             # terminal 2, :8001
-    MAX_MODEL=<org/name> python3 bench/run_matrix.py 2            # 2 reps, all harnesses
+    MAX_MODEL=<org/name> python3 bench/run_matrix.py 2            # 2 reps, all arms
     MAX_MODEL=<org/name> python3 bench/run_matrix.py 2 mojo,ref   # subset
     python3 bench/analyze.py
 
@@ -41,12 +43,12 @@ Iterate in tiers rather than rerunning the full matrix:
 
     # smoke, ~5 min: catches dead-on-arrival harness changes
     BENCH_TASKS=empty-input,fix-add,slugify \
-      MAX_MODEL=<m> python3 bench/run_matrix.py 1 mojo,maxv2
+      MAX_MODEL=<m> python3 bench/run_matrix.py 1 mojo,max
 
     # signal, ~30-60 min: tasks where models actually diverge
     BENCH_TASKS=off-by-one,parse-config,multi-file,long-horizon \
       BENCH_MAX_REQ=40 BENCH_TIMEOUT=900 \
-      MAX_MODEL=<m> python3 bench/run_matrix.py 1 maxv2,aider,pi
+      MAX_MODEL=<m> python3 bench/run_matrix.py 1 max,aider,pi
 
 `long-horizon` (six broken helpers across three files, iterate until
 `test_kit.py` prints TEST PASSED) is the long-task stress test; it

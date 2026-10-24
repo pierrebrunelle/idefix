@@ -12,14 +12,14 @@ Raw rows, logs and charts: github.com/pierrebrunelle/max-results.
 | harness | pass rate | median wall | peak RSS | median tokens |
 | --- | --- | --- | --- | --- |
 | aider | 12/12 (100%) | 23.1s | 250.2 MB | 811.0 |
-| max | 9/12 (75%) | 24.5s | 15.8 MB | 933.5 |
+| max --bare | 9/12 (75%) | 24.5s | 15.8 MB | 933.5 |
 | python-loop | 8/12 (67%) | 31.5s | 18.0 MB | 822 |
 | pi | 7/12 (58%) | 79.8s | 125.9 MB | 2750.0 |
 | deepseek-harness | 0/12 (0%) | 420.3s | 191.9 MB | None |
 
 ### Pass rate by task
 
-| task | max | python-loop | aider | pi | deepseek-harness |
+| task | max --bare | python-loop | aider | pi | deepseek-harness |
 | --- | --- | --- | --- | --- | --- |
 | empty-input | 100% | 100% | 100% | 100% | 0% |
 | fix-add | 100% | 100% | 100% | 100% | 0% |
@@ -35,10 +35,10 @@ Raw rows, logs and charts: github.com/pierrebrunelle/max-results.
 | deepseek-harness | timeout | 8 | all six tasks |
 | deepseek-harness | verify-fail | 4 | empty-input, fix-add, off-by-one, parse-config |
 | pi | timeout | 3 | parse-config, slugify |
-| max | verify-fail | 2 | parse-config, slugify |
+| max --bare | verify-fail | 2 | parse-config, slugify |
 | pi | verify-fail | 2 | off-by-one, parse-config |
 | python-loop | exit-2 | 2 | slugify |
-| max | exit-2 | 1 | parse-config |
+| max --bare | exit-2 | 1 | parse-config |
 | python-loop | exit-1 | 1 | parse-config |
 | python-loop | verify-fail | 1 | parse-config |
 
@@ -53,9 +53,9 @@ truncated sample, not a leaderboard.
 | --- | --- | --- | --- |
 | aider | 4/8 (50%) | 497.8s | 261.0 MB |
 | pi | 3/9 (33%) | 900.0s | 126.7 MB |
-| max | 1/9 (11%) | 879.2s | 15.8 MB |
+| max --bare | 1/9 (11%) | 879.2s | 15.8 MB |
 
-| task | max | aider | pi |
+| task | max --bare | aider | pi |
 | --- | --- | --- | --- |
 | chained-bugs | 0% | 100% | 0% |
 | cli-args | 0% | 100% | 100% |
@@ -77,9 +77,9 @@ proxy-injected `enable_thinking=false` on every arm.
 | aider | 1 | 75.4s | - | - | 255.2 MB | all six fixed |
 | pi | 1 | 335.1s | 12 | - | 114.1 MB | all six fixed |
 | dsh | 0 | 901.3s | - | - | 187.9 MB | watchdog; degenerate output |
-| maxv2 | 0 | 432.1s | 20 | 39 | 16.0 MB | no tool call mid-task |
+| max | 0 | 432.1s | 20 | 39 | 16.0 MB | no tool call mid-task |
 
-Failure autopsy on maxv2: every `sed -i` first errored on GNU syntax
+Failure autopsy on max: every `sed -i` first errored on GNU syntax
 (macOS needs `sed -i ''`), then BSD-correct seds returned exit 0 on
 non-matching patterns, so nothing changed while the tool reported
 success; the run ended on a prose plan with no tool call. aider's
@@ -91,14 +91,14 @@ structural difference this task exposes.
 Regime warning: this run served at ~5 tok/s. The 48 GB host was under
 memory pressure (weights + ~6 GB KV cache vs. the rest of the user's
 workload), so every arm's wall time is serving-dominated, not
-harness-dominated. maxv2 numbers still measure behavior correctly;
+harness-dominated. max numbers still measure behavior correctly;
 aider/pi failures here should be read against the healthy-regime run
 above, where both passed.
 
 | arm | pass | wall | requests | commands | peak RSS | ended |
 | --- | --- | --- | --- | --- | --- | --- |
-| maxv2 rep1 | 0 | 880.2s | 16 | 49 | 16.1 MB | wall; `http 0` retries |
-| maxv2 rep2 | 0 | 879.7s | 17 | 36 | 16.1 MB | wall; unexecuted tool_call |
+| max rep1 | 0 | 880.2s | 16 | 49 | 16.1 MB | wall; `http 0` retries |
+| max rep2 | 0 | 879.7s | 17 | 36 | 16.1 MB | wall; unexecuted tool_call |
 | aider rep1 | 0 | 900.2s | - | - | 231.0 MB | watchdog; `$$` degenerate output |
 | aider rep2 | 0 | 900.2s | - | - | 219.9 MB | watchdog; same shape |
 | pi rep1 | 0 | 15.1s | 4 | - | 120.0 MB | stream ended w/o finish_reason x3 |
@@ -109,16 +109,16 @@ edit-didn't-land failure. rep1 made 24 real edits to `text.py` (25
 commands honestly reported as no-ops); rep2 made 4. The new bottleneck
 is semantic - the model rewrote `snake_to_camel` ~24 times with wrong
 logic (`capitalize()`, `title()` variants) and never reached bugs 2-6.
-aider's healthy-regime pass took ~763 tokens; maxv2 burned ~2,900
+aider's healthy-regime pass took ~763 tokens; max burned ~2,900
 iterating. Writing correct code through shell edit commands still costs
 more model capability than a patch format, at least at 5 tok/s where
 every attempt is expensive.
 
 ## Methodology notes
 
-- `mojo` is `./max --bare` (v1 wire protocol only); `maxv2` is the
+- `mojo` is `./max --bare` (v1 wire protocol only); `max` is the
   shipped binary; `ref`/`python-loop` is `tests/ref_client.py`.
-- mojo/maxv2/ref/aider talk to `max serve` directly or through a
+- mojo/max/ref/aider talk to `max serve` directly or through a
   passthrough proxy (`PROXY_REWRITE=0`); pi/dsh/opencode need the
   rewriting proxy because this MAX build has no Hermes tool parser.
 - deepseek-harness rows: the model reads the ~6k-token Cordis plugin

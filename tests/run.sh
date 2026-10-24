@@ -257,10 +257,11 @@ grep -q "KEEP_ME_PLAIN=visible" /tmp/stub_envdump.log && echo "PASS env plain ke
 grep -q "sekrit-xy\|MAX_API_KEY" /tmp/stub_envdump.log && { echo "FAIL env leaked credential"; FAIL=1; } || echo "PASS env scrubbed"
 
 # 37. changed_files: tool result lists files the command actually changed
-rm -f /tmp/max_cf.json /tmp/max_cf_bare.json
+rm -f /tmp/max_cf.json /tmp/max_cf_bare.json cf-out.txt
 run_mode cfdiff ./max --repo . --transcript /tmp/max_cf.json "task" >/dev/null 2>&1
 python3 -c "import json;d=json.load(open('/tmp/max_cf.json'));t=[m for m in d if m['role']=='tool'];assert 'cf-out.txt' in t[0]['content'],t[0]" && echo "PASS changed_files reported" || { echo "FAIL changed_files reported"; FAIL=1; }
 run_mode cfdiff ./max --bare --repo . --transcript /tmp/max_cf_bare.json "task" >/dev/null 2>&1
 python3 -c "import json;d=json.load(open('/tmp/max_cf_bare.json'));assert 'changed_files' not in json.dumps(d)" && echo "PASS bare omits changed_files" || { echo "FAIL bare omits changed_files"; FAIL=1; }
+rm -f cf-out.txt
 
 exit $FAIL

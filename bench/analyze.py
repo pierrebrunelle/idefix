@@ -45,9 +45,9 @@ def mark_infra(rows, logsdir):
         n += 1
     return n
 
-COLORS = {"mojo": "#4f8ff7", "maxv2": "#8fd14f", "ref": "#9a9a9a", "aider": "#f7a24f",
+COLORS = {"mojo": "#4f8ff7", "max": "#8fd14f", "ref": "#9a9a9a", "aider": "#f7a24f",
           "opencode": "#a78bfa", "pi": "#2dd4bf", "dsh": "#f778ba"}
-NAMES = {"mojo": "max", "maxv2": "max-v2", "ref": "python-loop", "aider": "aider",
+NAMES = {"mojo": "max --bare", "max": "max", "ref": "python-loop", "aider": "aider",
          "opencode": "opencode", "pi": "pi", "dsh": "deepseek-harness"}
 BG, FG, MUT, GRID = "#0d1117", "#e6edf3", "#8b949e", "#21262d"
 random.seed(7)
@@ -187,7 +187,7 @@ def median(v):
 
 def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
     tasks = sorted({r["task"] for r in valid_rows})
-    order = ["mojo", "maxv2", "ref", "aider", "pi", "dsh", "opencode"]
+    order = ["mojo", "max", "ref", "aider", "pi", "dsh", "opencode"]
     # clients come from valid rows: a harness with no valid rows has no
     # measurable column, and deriving from valid_rows keeps len(per[c]) > 0
     clients = ([c for c in order if any(r["client"] == c for r in valid_rows)]
@@ -266,15 +266,15 @@ def emit_board(valid_rows, all_rows, model, cdir, cpre, n_infra):
               f"![time]({cpre}/median_time.svg) ![strip]({cpre}/wall_strip.svg)", "",
               f"![pareto]({cpre}/pareto.svg) ![tokens]({cpre}/tokens_per_success.svg)", "",
               "### Methodology notes", "",
-              "- max and python-loop talk to MAX on :8000 with a text-command",
-              "  protocol; aider uses its edit-format prompts on :8000. pi and",
-              "  deepseek-harness use native OpenAI tool calling, which this MAX serve",
-              "  build cannot parse (no hermes tool parser), so they run through",
-              "  bench/toolcall_proxy.py on :8001, which rewrites <tool_call> text into",
-              "  structured tool_calls. Wall times include the proxy hop.",
-              "- max-v2 is the same max binary without --bare: journal,",
-              "  compaction and retries stay on, so it measures the shipped",
-              "  product rather than the raw wire protocol."]
+              "- max, max --bare and python-loop talk to MAX on :8000 with a",
+              "  text-command protocol; aider uses its edit-format prompts on :8000.",
+              "  pi and deepseek-harness use native OpenAI tool calling, which this",
+              "  MAX serve build cannot parse (no hermes tool parser), so they run",
+              "  through toolcall_proxy.py (max-results/compare/), which rewrites",
+              "  <tool_call> text into structured tool_calls. Wall times include",
+              "  the proxy hop.",
+              "- max --bare disables journal, compaction and retries to measure",
+              "  the raw wire protocol; plain max is the shipped product."]
     if "dsh" in clients:
         lines += [
             "- deepseek-harness rows: the model reads the ~6k-token Cordis plugin system",

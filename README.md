@@ -37,9 +37,21 @@ Note: our binary is `max`; Modular's CLI is also `max`. Point
 
 ## Using it
 
-    ./max --repo DIR "task"                        # one-shot
-    ./max --repo DIR                               # interactive REPL (max> )
-    printf 'fix\nadd tests\n' | ./max --repo DIR   # piped tasks share a session
+Say what you want in plain words; max runs the commands to get there:
+
+    cd my-project
+    max "the slugify test fails on unicode input - fix it and re-run the tests"
+    max "add a --verbose flag to the cli and update the help text"
+    max                              # REPL on stdin (max> ), cwd is the repo
+    max --repo other/dir "fix the parser bug"
+    printf 'fix the parser\nadd tests for it\n' | max   # piped lines share one session
+
+In the REPL:
+
+    max> tests fail on empty input, fix it
+    max> !python3 test_kit.py       # run a command yourself; no request spent
+    max> /reset                     # drop context, start over
+    max> /quit                      # or Ctrl-D
 
 `AGENTS.md`/`CLAUDE.md` in the repo root load into the system prompt.
 `./max --help` lists every flag and env knob.
@@ -56,8 +68,8 @@ disables all of it for protocol parity with `tests/ref_client.py`.
 Rows are verified by each task's own script, not the model's say-so
 (`bench/RESULTS.md`; raw logs: github.com/pierrebrunelle/max-results).
 
-- 6-task suite, Qwen3-4B, 2 reps: aider 100%, **max 75%**, pi 58%;
-  max runs at ~16 MB peak RSS vs aider's ~250 MB.
+- 6-task suite, Qwen3-4B, 2 reps: aider 100%, **max --bare 75%**,
+  pi 58%; our binary runs at ~16 MB peak RSS vs aider's ~250 MB.
 - `long-horizon` (6 bugs across 3 files), Qwen3-14B: aider and pi
   pass; max did not. Free-form `bash` let the model report an edit
   that never landed, where aider's patch format fails loudly. Tool
