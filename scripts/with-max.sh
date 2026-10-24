@@ -5,7 +5,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-MAXCLI="${MAXCLI:-max}"
+# The model-server CLI defaults to `max` (Modular's). If this script is
+# itself installed as `max` and shadows it, pick the next `max` on PATH.
+MAXCLI="${MAXCLI:-}"
+if [ -z "$MAXCLI" ]; then
+    self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+    MAXCLI="max"
+    while IFS= read -r c; do
+        [ -n "$c" ] && [ "$c" != "$self" ] && MAXCLI="$c" && break
+    done <<EOF
+$(type -aP max 2>/dev/null)
+EOF
+fi
 export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
 BASE="${MAX_BASE_URL:-http://127.0.0.1:8000/v1}"
 

@@ -137,6 +137,11 @@ check "ediff exit" 0 "$rc"
 grep -q '"diff"' /tmp/stub_ediff.log && grep -q "+a" /tmp/stub_ediff.log && echo "PASS diff echo" || { echo "FAIL diff echo"; cat /tmp/stub_ediff.log; FAIL=1; }
 rm -f d.txt
 
+# 13f. with-max.sh: server already answering -> runs task, never serves
+out=$(run_mode normal env MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
+check "with-max exit" 0 "$rc"
+check "with-max answer" "Done." "$out"
+
 # 13d. sandbox (macOS seatbelt): writes outside repo denied, inside allowed
 if command -v sandbox-exec >/dev/null 2>&1; then
     rm -f .sbx-ok "$HOME/.sbx-denied-xyz"

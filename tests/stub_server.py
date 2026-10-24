@@ -7,6 +7,7 @@ Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | m
        | chunked | envdump | cfdiff
 """
 import json
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -51,6 +52,20 @@ def reply(handler, status, data):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.endswith("/models"):
+            body = json.dumps(
+                {"data": [{"id": os.environ.get("MAX_MODEL", "test-model")}]}
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length))

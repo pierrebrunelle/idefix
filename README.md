@@ -4,7 +4,7 @@
 
 **A minimal, local-first coding agent written in Mojo.**
 
-`max` is a single **~255 KB native binary** that takes a task, talks to a local LLM over Modular MAX's OpenAI-compatible API, executes the model's `bash(command)` calls inside a target repository, and prints the answer. 
+`max` is a single **~300 KB native binary** that takes a task, talks to a local LLM over Modular MAX's OpenAI-compatible API, executes the model's `bash(command)` calls inside a target repository, and prints the answer. 
 
 - **Zero Python at runtime**
 - **No dependencies beyond `libcurl`**
@@ -23,22 +23,33 @@
 
 ## Quickstart
 
-### Prerequisites
-- [`mojo`](https://www.modular.com/mojo) on `PATH` (to build)
-- Modular's `max` CLI (to serve a local model)
-
-### Build & Run
+Three steps, copy-paste:
 
 ```bash
-make
-MAX_MODEL=Qwen/Qwen3-1.7B ./scripts/with-max.sh --repo ./project \
-  "Fix the parser bug and run its tests"
+# 1. Install the Modular tools once (gives you mojo + the `max` model server)
+pip install modular        # or: pipx install modular
+
+# 2. Build and install the agent (puts `max` on your PATH)
+git clone https://github.com/pierrebrunelle/max.git
+cd max && ./install.sh
+
+# 3. Use it - from inside any project folder
+cd my-project
+max "the slugify test fails on unicode input - fix it and re-run the tests"
 ```
 
-`with-max.sh` lazily boots `max serve`, runs the task against the target repo, and tears down what it started. If you already have an OpenAI-compatible server running:
+That's it. The first `max` run boots a local model server in the background
+(`Qwen/Qwen3-1.7B` by default - about 2 GB of RAM), runs your task, and shuts
+the server down when it finishes. Pick a different model with
+`MAX_MODEL=<org/name>`.
+
+Already running an OpenAI-compatible server (Modular `max serve`, ollama,
+LM Studio)? Point `max` at it and it will use it instead of booting one:
 
 ```bash
-MAX_MODEL=<org/name> ./max --repo ./project "Fix the parser bug and run its tests"
+export MAX_BASE_URL=http://127.0.0.1:11434/v1   # e.g. ollama
+export MAX_MODEL=qwen3:4b
+max "fix the parser bug and run its tests"
 ```
 
 ### Example Run
@@ -52,7 +63,9 @@ $ ./max --repo . "test_slugify fails on 'Creme Brulee'; fix it"
 Fixed: normalize accents before lowercasing in slugify().
 ```
 
-> **Note on binary naming:** Both this agent and Modular's CLI are named `max`. If they collide on your `PATH`, point `MAXCLI=/path/to/modular-max` when using `with-max.sh`. Running `./install.sh` installs a `max` wrapper into `~/.local/bin`.
+> **Note on binary naming:** Both this agent and Modular's CLI are named `max`.
+> The installed wrapper finds the other `max` on your `PATH` automatically;
+> if it can't, point `MAXCLI=/path/to/modular-max` at Modular's CLI.
 
 ---
 
@@ -84,7 +97,9 @@ max> /reset                     # clear conversation context and start fresh
 max> /quit                      # exit (or Ctrl-D)
 ```
 
-If `AGENTS.md` or `CLAUDE.md` is present in the repository root, `max` automatically loads it into the system prompt. Run `./max --help` for the full list of flags and environment variables.
+If `AGENTS.md` or `CLAUDE.md` is present in the repository root, `max` automatically loads it into the system prompt. Run `max --help` for the full list of flags and environment variables.
+
+Hacking on `max` itself: `make` builds `./max` in the repo root, and `scripts/with-max.sh` is the same lazy-serve wrapper that `./install.sh` installs, pointed at the repo build.
 
 ---
 
