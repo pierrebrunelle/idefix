@@ -54,6 +54,7 @@ struct Config(Copyable):
     var resume_file: String
     var journal_path: String
     var bare: Bool
+    var sandbox: Bool
 
     def __init__(out self):
         self.repo = "."
@@ -84,10 +85,11 @@ struct Config(Copyable):
         self.resume_file = ""
         self.journal_path = ""
         self.bare = False
+        self.sandbox = False
 
 
 def usage() -> String:
-    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -199,6 +201,8 @@ def parse_args() raises -> Config:
             cfg.cont = True
         elif arg == "--bare":
             cfg.bare = True
+        elif arg == "--sandbox":
+            cfg.sandbox = True
         elif arg == "-h" or arg == "--help":
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
@@ -232,8 +236,8 @@ def parse_args() raises -> Config:
         die("repo path is not a directory: " + cfg.repo, 64)
     if cfg.bare:
         # bench-compat mode: every behavior added after the original loop off
-        if cfg.cont or cfg.resume_file != "" or cfg.notify != "":
-            die("--bare disables --continue, --resume and --notify", 64)
+        if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox:
+            die("--bare disables --continue, --resume, --notify and --sandbox", 64)
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
@@ -291,6 +295,30 @@ def tool_msg(cid: String, content: String) -> String:
     return (
         '{"role":"tool","tool_call_id":' + bindings.json_quote(cid)
         + ',"content":' + bindings.json_quote(content) + "}"
+    )
+
+
+def looks_write(cmd: String) -> Bool:
+    var marks = List[String](
+        ">", "sed -i", "tee ", "apply_patch", "mv ", "cp ", "rm ",
+        "mkdir", "touch", "patch ", "truncate", "dd ",
+        __list_literal__=NoneType(),
+    )
+    for i in range(len(marks)):
+        if cmd.find(marks[i]) >= 0:
+            return True
+    return False
+
+
+def sandbox_profile(repo: String, tmp: String) -> String:
+    return (
+        "(version 1)(deny default)"
+        + "(allow process-exec process-fork signal sysctl-read mach-lookup)"
+        + "(allow file-read*)"
+        + '(allow file-write* (subpath "' + repo + '") (subpath "' + tmp
+        + '") (subpath "/private/tmp") (subpath "/private' + tmp + '"))'
+        + '(deny file-write* (subpath "' + repo
+        + '/.git/hooks") (literal "' + repo + '/.git/config"))'
     )
 
 
@@ -379,7 +407,7 @@ def compact_history(history: String, keep: Int) raises -> Tuple[String, Int]:
 
 def rebuild_history(journal_text: String, system_msg: String) raises -> String:
     # Replay msg events from a JSONL journal into a history fragment.
-    var history = system_msg
+    var msgs = List[String]()
     for line in journal_text.split("\n"):
         var s = String(line)
         if s == "":
@@ -389,13 +417,36 @@ def rebuild_history(journal_text: String, system_msg: String) raises -> String:
             continue
         var ev = bindings.cjson_str(bindings.cjson_get(j, "ev"))
         if ev == "reset":
-            history = system_msg
+            msgs.clear()
         elif ev == "msg":
             var m = bindings.cjson_get(j, "m")
             if m:
-                var mj = bindings.cjson_print(m)
-                history += "," + mj
+                msgs.append(bindings.cjson_print(m))
         bindings.cjson_del(j)
+    # A journal cut mid-batch (crash between the assistant msg and its
+    # tool results) would replay unpaired tool_calls; the next request
+    # 400s. Drop the trailing assistant msg in that case.
+    var pend_idx = -1
+    var pend_need = 0
+    var pend_got = 0
+    for i in range(len(msgs)):
+        var mj = bindings.cjson_parse(msgs[i])
+        if mj:
+            var role = bindings.cjson_str(bindings.cjson_get(mj, "role"))
+            var tc = bindings.cjson_get(mj, "tool_calls")
+            if role == "assistant" and tc and bindings.cjson_len(tc) > 0:
+                pend_idx = i
+                pend_need = bindings.cjson_len(tc)
+                pend_got = 0
+            elif role == "tool" and pend_need > 0:
+                pend_got += 1
+            bindings.cjson_del(mj)
+    var keep = len(msgs)
+    if pend_need > 0 and pend_got < pend_need:
+        keep = pend_idx
+    var history = system_msg
+    for i in range(keep):
+        history += "," + msgs[i]
     return history
 
 
@@ -561,6 +612,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             var n = bindings.cjson_len(calls)
             if n > cfg.max_calls_per_response:
                 n = cfg.max_calls_per_response
+            var doom = False
             for j in range(n):
                 var call = bindings.cjson_arr(calls, j)
                 var cid = bindings.cjson_str(bindings.cjson_get(call, "id"))
@@ -595,77 +647,120 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 else:
                                     st.last_cmd = cmd
                                     st.cmd_repeats = 0
+                            var doom_now = cfg.loop_guard and st.cmd_repeats >= 4
                             var mark = String("")
-                            if not cfg.bare:
-                                # hash snapshot so "rewritten" and "changed" are
-                                # different answers; sed -i exits 0 on a no-match
-                                mark = cfg.session_dir + "/cmdmark"
-                                if cfg.session_dir == "":
-                                    mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000))
-                                var snap = "find . "
-                                if cfg.session_dir.find(cfg.repo + "/") == 0:
-                                    snap += "-path './" + String(
-                                        cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
-                                    ) + "' -prune -o "
-                                snap += (
-                                    "-name .git -prune -o -name .max-state -prune -o "
-                                    + "-type f -size -5M -exec md5 -r {} + 2>/dev/null"
-                                    + " | sort > " + mark
-                                )
-                                _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
-                            var rc = bindings.run_capture(
-                                cmd, cfg.repo, cfg.max_output_bytes, cfg.max_command_ms, True
-                            )
-                            vlog(
-                                cfg,
-                                "  -> exit " + String(rc[1])
-                                + " out=" + String(rc[0].byte_length()) + "B",
-                            )
-                            result = (
-                                '{"exit_code":'
-                                + String(rc[1])
-                                + ',"output":'
-                                + bindings.json_quote(rc[0])
-                                + ',"discarded_bytes":'
-                                + String(rc[2])
-                            )
-                            if st.cmd_repeats >= 2:
-                                var count = st.cmd_repeats + 1
-                                result += (
-                                    ',"loop_warning":"same command ran '
-                                    + String(count) + ' times in a row"'
+                            var hasher = String("md5 -r")
+                            var prof = String("")
+                            if doom_now:
+                                result = (
+                                    '{"error":"same command repeated 5 times;'
+                                    + ' stopped by loop guard"}'
                                 )
                                 journal(
                                     cfg,
-                                    '{"ev":"loop","ts":' + String(bindings.now_seconds())
+                                    '{"ev":"loop","ts":'
+                                    + String(bindings.now_seconds())
                                     + ',"cmd":' + bindings.json_quote(cmd)
-                                    + ',"count":' + String(count) + "}",
+                                    + ',"stop":true}',
                                 )
-                            if mark != "":
-                                # same snapshot again; lines present on only one
-                                # side are created, modified or deleted files
-                                var dcmd = "find . "
-                                if cfg.session_dir.find(cfg.repo + "/") == 0:
-                                    dcmd += "-path './" + String(
-                                        cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
-                                    ) + "' -prune -o "
-                                dcmd += (
-                                    "-name .git -prune -o -name .max-state -prune -o "
-                                    + "-type f -size -5M -exec md5 -r {} + 2>/dev/null"
-                                    + " | sort > " + mark + ".after; "
-                                    + "{ comm -13 " + mark + " " + mark + ".after; "
-                                    + "comm -23 " + mark + " " + mark + ".after; }"
-                                    + " | cut -d' ' -f2- | sort -u | head -40"
-                                )
-                                var fr = bindings.run_capture(
-                                    dcmd, cfg.repo, 4096, 30000, False
-                                )
-                                if fr[1] == 0:
-                                    result += (
-                                        ',"changed_files":'
-                                        + bindings.json_quote(String(fr[0].strip()))
+                                doom = True
+                            else:
+                                if not cfg.bare:
+                                    # hash snapshot so "rewritten" and "changed" are
+                                    # different answers; sed -i exits 0 on a no-match
+                                    mark = cfg.session_dir + "/cmdmark"
+                                    if cfg.session_dir == "":
+                                        mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000))
+                                    var hw = bindings.run_capture(
+                                        "command -v md5sum >/dev/null"
+                                        + " && echo md5sum || echo 'md5 -r'",
+                                        cfg.repo, 64, 5000, False,
                                     )
-                            result += "}"
+                                    if hw[1] == 0 and String(hw[0].strip()) != "":
+                                        hasher = String(hw[0].strip())
+                                    var snap = "find . "
+                                    if cfg.session_dir.find(cfg.repo + "/") == 0:
+                                        snap += "-path './" + String(
+                                            cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
+                                        ) + "' -prune -o "
+                                    snap += (
+                                        "-name .git -prune -o -name .max-state -prune -o "
+                                        + "-type f -size -50M -exec " + hasher
+                                        + " {} + 2>/dev/null | sort > " + mark
+                                    )
+                                    _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
+                                var cmd_timeout = cfg.max_command_ms
+                                var left_ms = (deadline - bindings.now_seconds()) * 1000
+                                if left_ms < cmd_timeout:
+                                    cmd_timeout = left_ms
+                                if cmd_timeout < 1:
+                                    cmd_timeout = 1
+                                if cfg.sandbox:
+                                    var tmp = getenv("TMPDIR")
+                                    if tmp == "":
+                                        tmp = "/private/tmp"
+                                    prof = sandbox_profile(bindings.realpath(cfg.repo), tmp)
+                                    vlog(cfg, "profile: " + prof)
+                                var rc = bindings.run_capture(
+                                    cmd, cfg.repo, cfg.max_output_bytes, cmd_timeout, True, prof
+                                )
+                                vlog(
+                                    cfg,
+                                    "  -> exit " + String(rc[1])
+                                    + " out=" + String(rc[0].byte_length()) + "B",
+                                )
+                                result = (
+                                    '{"exit_code":'
+                                    + String(rc[1])
+                                    + ',"output":'
+                                    + bindings.json_quote(rc[0])
+                                    + ',"discarded_bytes":'
+                                    + String(rc[2])
+                                )
+                                if st.cmd_repeats >= 2:
+                                    var count = st.cmd_repeats + 1
+                                    result += (
+                                        ',"loop_warning":"same command ran '
+                                        + String(count) + ' times in a row"'
+                                    )
+                                    journal(
+                                        cfg,
+                                        '{"ev":"loop","ts":' + String(bindings.now_seconds())
+                                        + ',"cmd":' + bindings.json_quote(cmd)
+                                        + ',"count":' + String(count) + "}",
+                                    )
+                                if mark != "":
+                                    # same snapshot again; lines present on only one
+                                    # side are created, modified or deleted files
+                                    var dcmd = "find . "
+                                    if cfg.session_dir.find(cfg.repo + "/") == 0:
+                                        dcmd += "-path './" + String(
+                                            cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
+                                        ) + "' -prune -o "
+                                    dcmd += (
+                                        "-name .git -prune -o -name .max-state -prune -o "
+                                        + "-type f -size -50M -exec " + hasher
+                                        + " {} + 2>/dev/null"
+                                        + " | sort > " + mark + ".after; "
+                                        + "{ comm -13 " + mark + " " + mark + ".after; "
+                                        + "comm -23 " + mark + " " + mark + ".after; }"
+                                        + " | cut -d' ' -f2- | sort -u | head -40"
+                                    )
+                                    var fr = bindings.run_capture(
+                                        dcmd, cfg.repo, 4096, 30000, False
+                                    )
+                                    if fr[1] == 0:
+                                        var cf = String(fr[0].strip())
+                                        result += (
+                                            ',"changed_files":'
+                                            + bindings.json_quote(cf)
+                                        )
+                                        if cf == "" and rc[1] == 0 and looks_write(cmd):
+                                            result += (
+                                                ',"warning":"exit 0 but no files'
+                                                + ' changed; the edit may not have applied"'
+                                            )
+                                result += "}"
                         bindings.cjson_del(aj)
                 push_msg(cfg, history, tool_msg(cid, result))
             # every call needs a tool result on the wire or the next request 400s
@@ -677,10 +772,17 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     cfg, history,
                     tool_msg(cid, '{"error":"call limit reached; not executed"}')
                 )
+            if doom:
+                bindings.eprint("[max] loop guard stopped a repeated command")
+                exit_code = 2
+                break
         else:
             final = content
             bindings.cjson_del(root)
             exit_code = 0
+            if bindings.now_seconds() > deadline:
+                bindings.eprint("[max] --max-seconds exceeded")
+                exit_code = 2
             break
         if msg_owner:
             bindings.cjson_del(msg_owner)

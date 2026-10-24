@@ -60,7 +60,9 @@ Unattended runs: `--continue`/`--resume FILE` replay journals, a
 `status` file shows live progress, compaction rewrites old tool output
 instead of dying at the context limit, retries cover transport errors,
 and every bound is local (requests, wall clock, per-command timeout,
-output caps, token budget, loop guard, `--notify CMD`). `--bare`
+output caps, token budget, loop guard that stops repeated commands,
+`--notify CMD`). `--sandbox` confines model-issued commands to the repo
+plus tmp (macOS seatbelt). `--bare`
 disables all of it for protocol parity with the reference client
 (`bench/ref_client.py` in pierrebrunelle/max-results).
 
@@ -74,9 +76,9 @@ Rows are verified by each task's own script, not the model's say-so
 - `long-horizon` (6 bugs across 3 files), Qwen3-14B: aider and pi
   pass; max went 0/4. Free-form `bash` let the model report an edit
   that never landed, where aider's patch format fails loudly - so tool
-  results now carry `changed_files` and a no-op edit cannot read as
-  success. With that fixed the remaining gap is the model's:
-  `snake_to_camel` got rewritten two dozen ways, all wrong.
+  results now carry `changed_files`, and a write-shaped command that
+  changed nothing gets an explicit `warning`. The remaining gap is the
+  model's: `snake_to_camel` got rewritten two dozen ways, all wrong.
 
 Method, tasks and repro: the `bench/` dir of max-results.
 

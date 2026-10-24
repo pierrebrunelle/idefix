@@ -102,10 +102,41 @@ check "ctxbig exit" 0 "$rc"
 check "ctxbig answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_ctxbig.log && echo "PASS ctxbig cleared" || { echo "FAIL ctxbig cleared"; cat /tmp/stub_ctxbig.log; FAIL=1; }
 
-# 13. loop: same command every turn -> loop_warning in tool result
+# 13. loop: same command every turn -> loop_warning, then doom stop at 5
+find "$MAX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
 out=$(run_mode loop ./max --repo . --max-requests 6 "task" 2>/dev/null); rc=$?
 check "loop exit" 2 "$rc"
 grep -q "loop_warning" /tmp/stub_loop.log && echo "PASS loop warning" || { echo "FAIL loop warning"; cat /tmp/stub_loop.log; FAIL=1; }
+grep -q '"stop":true' "$MAX_STATE_DIR"/sessions/*/journal.jsonl 2>/dev/null && echo "PASS loop doom stop" || { echo "FAIL loop doom stop"; FAIL=1; }
+
+# 13b. wall deadline stops a runaway loop and clamps command timeout
+start=$(python3 -c 'import time;print(time.time())')
+out=$(run_mode loop ./max --repo . --max-seconds 1 --no-loop-guard "task" 2>/dev/null); rc=$?
+elapsed=$(python3 -c "import time;print(int(time.time()-$start))")
+check "deadline exit" 2 "$rc"
+check "deadline fast" 1 "$([ "$elapsed" -le 6 ] && echo 1 || echo 0)"
+start=$(python3 -c 'import time;print(time.time())')
+out=$(run_mode sleep ./max --repo . --max-seconds 1 --max-command-seconds 30 "task" 2>/dev/null)
+elapsed=$(python3 -c "import time;print(int(time.time()-$start))")
+check "deadline clamp" 1 "$([ "$elapsed" -le 6 ] && echo 1 || echo 0)"
+
+# 13c. sednoop: exit-0 write-shaped command with no file change -> warning
+out=$(run_mode sednoop ./max --repo . "task" 2>/dev/null); rc=$?
+check "sednoop exit" 0 "$rc"
+grep -q "may not have applied" /tmp/stub_sednoop.log && echo "PASS noop warning" || { echo "FAIL noop warning"; cat /tmp/stub_sednoop.log; FAIL=1; }
+
+# 13d. sandbox (macOS seatbelt): writes outside repo denied, inside allowed
+if command -v sandbox-exec >/dev/null 2>&1; then
+    rm -f .sbx-ok "$HOME/.sbx-denied-xyz"
+    out=$(run_mode sbx ./max --repo . --sandbox "task" 2>/dev/null); rc=$?
+    check "sbx exit" 0 "$rc"
+    [ -f .sbx-ok ] && echo "PASS sbx repo write" || { echo "FAIL sbx repo write"; FAIL=1; }
+    [ ! -f "$HOME/.sbx-denied-xyz" ] && echo "PASS sbx home denied" || { echo "FAIL sbx home denied"; FAIL=1; }
+    grep -qi "permitted\|denied\|deny" /tmp/stub_sbx.log && echo "PASS sbx deny msg" || { echo "FAIL sbx deny msg"; cat /tmp/stub_sbx.log; FAIL=1; }
+    rm -f .sbx-ok
+else
+    echo "SKIP sandbox (no sandbox-exec)"
+fi
 
 # 14. status file + journal events for a normal run
 rm -rf /tmp/max-state-obs

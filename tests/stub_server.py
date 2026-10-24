@@ -2,7 +2,7 @@
 """Stub OpenAI-compatible endpoint for max tests. Not shipped.
 
 Usage: stub_server.py PORT MODE
-Modes: normal | badargs | malformed | batch | sleep | length
+Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff
 """
@@ -63,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
             % [m.get("content") for m in msgs if m.get("role") == "user"]
         )
         sys.stderr.write("STUB temp: %s\n" % body.get("temperature"))
+        sys.stderr.write("STUB body: %s\n" % json.dumps(body.get("messages", []))[:4000])
         if MODE == "flaky" and not STATE["fired"]:
             STATE["fired"] = True
             reply(self, 500, {"error": {"message": "boom"}})
@@ -150,6 +151,16 @@ class Handler(BaseHTTPRequestHandler):
             elif MODE == "envdump":
                 resp = msg_response(
                     calls=[tool_call("call_e", "env")],
+                    finish="tool_calls",
+                )
+            elif MODE == "sednoop":
+                resp = msg_response(
+                    calls=[tool_call("call_n", "sed -i '' 's/zzznope/yyy/' README.md")],
+                    finish="tool_calls",
+                )
+            elif MODE == "sbx":
+                resp = msg_response(
+                    calls=[tool_call("call_x", "touch \"$HOME/.sbx-denied-xyz\" ; touch .sbx-ok")],
                     finish="tool_calls",
                 )
             elif MODE == "cfdiff":

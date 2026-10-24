@@ -431,14 +431,17 @@ def is_dir(path: String) -> Bool:
 
 def realpath(path: String) -> String:
     var p = path
-    var buf = List[UInt8](capacity=4096)
-    buf.resize(4096, 0)
-    var r = external_call["realpath", cstr_ptr](
-        p.as_c_string_span().ptr(), buf.unsafe_ptr()
-    )
-    if not r:
+    var buf = external_call["calloc", raw_ptr](c_size_t(4096), c_size_t(1))
+    if not buf:
         return path
-    return String(unsafe_from_utf8_ptr=r.value())
+    var r = external_call["realpath", cstr_ptr](
+        p.as_c_string_span().ptr(), buf.value()
+    )
+    var out = path
+    if r:
+        out = String(unsafe_from_utf8_ptr=r.value())
+    _ = external_call["free", c_int](buf.value())
+    return out
 
 
 def fnv1a_hex(s: String) -> String:
@@ -491,9 +494,21 @@ def c_argv(mut args: List[String]) raises -> raw_ptr:
 
 
 def run_capture(
-    command: String, cwd: String, cap: Int, timeout_ms: Int, scrub_env: Bool
+    command: String,
+    cwd: String,
+    cap: Int,
+    timeout_ms: Int,
+    scrub_env: Bool,
+    profile: String = "",
 ) raises -> Tuple[String, Int, Int]:
-    var args = List[String]("/bin/bash", "-c", command, __list_literal__=NoneType())
+    var args: List[String]
+    if profile == "":
+        args = List[String]("/bin/bash", "-c", command, __list_literal__=NoneType())
+    else:
+        args = List[String](
+            "/usr/bin/sandbox-exec", "-p", profile, "/bin/bash", "-c", command,
+            __list_literal__=NoneType(),
+        )
     var argv = c_argv(args)
     var fds_mem = external_call["calloc", raw_ptr](c_size_t(2), c_size_t(4))
     var pi = fds_mem.value().unsafe_bitcast[c_int]()
@@ -523,14 +538,14 @@ def run_capture(
         var dir = cwd
         if external_call["chdir", c_int](dir.as_c_string_span().ptr()) != 0:
             _ = external_call["_exit", c_int](c_int(126))
-        var bash = "/bin/bash"
+        var exe = args[0]
         if scrub_env:
             var envp = external_call["shim_scrubbed_env", raw_ptr]()
             _ = external_call["execve", c_int](
-                bash.as_c_string_span().ptr(), argv, envp
+                exe.as_c_string_span().ptr(), argv, envp
             )
         else:
-            _ = external_call["execv", c_int](bash.as_c_string_span().ptr(), argv)
+            _ = external_call["execv", c_int](exe.as_c_string_span().ptr(), argv)
         _ = external_call["_exit", c_int](c_int(127))
     # Parent also setpgid()s so the kill group exists before the child gets
     # to it; otherwise a signal in that window misses the still-grouped child.
