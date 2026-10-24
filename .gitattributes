@@ -1,6 +1,1 @@
 bench/tasks/** linguist-vendored
-bench/charts/** linguist-generated
-bench/logs/** linguist-generated
-bench/logs-*/** linguist-generated
-bench/results.jsonl linguist-generated
-bench/RESULTS.md linguist-generated
