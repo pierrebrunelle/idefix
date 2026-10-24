@@ -605,12 +605,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             if asst == "":
                 # MAX echoes null tool_calls/function_call fields that its own
                 # request schema rejects; rebuild the assistant message valid.
-                asst = '{"role":"assistant"'
+                asst = '{"role":"assistant","content":'
                 var cont = bindings.cjson_get(msg, "content")
                 if cont:
-                    var cj = bindings.cjson_print(cont)
-                    if cj != "null":
-                        asst += ',"content":' + cj
+                    asst += bindings.cjson_print(cont)
+                else:
+                    asst += "null"
                 asst += ',"tool_calls":' + bindings.cjson_print(calls) + "}"
             push_msg(cfg, history, asst)
             var n = bindings.cjson_len(calls)
