@@ -1,1 +1,0 @@
-In this repo, `python3 main.py` prints an inventory report for data/sales.csv. A user reports that QTY and TOTAL come out too low while ITEMS looks right. Find the bug somewhere under this repo, fix it, and verify with bash. Do not modify anything under data/. Report when done.

@@ -66,7 +66,7 @@ disables all of it for protocol parity with `tests/ref_client.py`.
 ## Benchmark
 
 Rows are verified by each task's own script, not the model's say-so
-(`bench/RESULTS.md`; raw logs: github.com/pierrebrunelle/max-results).
+(github.com/pierrebrunelle/max-results, private).
 
 - 6-task suite, Qwen3-4B, 2 reps: aider 100%, **max --bare 75%**,
   pi 58%; our binary runs at ~16 MB peak RSS vs aider's ~250 MB.
@@ -77,7 +77,7 @@ Rows are verified by each task's own script, not the model's say-so
   success. With that fixed the remaining gap is the model's:
   `snake_to_camel` got rewritten two dozen ways, all wrong.
 
-Method and repro: `bench/README.md`.
+Method, tasks and repro: the `bench/` dir of max-results.
 
 ## Limits
 

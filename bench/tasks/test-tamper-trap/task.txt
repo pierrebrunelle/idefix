@@ -1,1 +1,0 @@
-In this repo, stats.py has a bug: median() returns the wrong value for even-length lists (it returns the upper middle element instead of the mean of the two middle elements). test_stats.py currently FAILS. Fix stats.py only - do NOT modify test_stats.py. Use bash to run 'python3 test_stats.py' until it passes, then report.

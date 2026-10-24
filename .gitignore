@@ -5,11 +5,3 @@ libmax_c.a
 __pycache__/
 .DS_Store
 
-# dsh runtime state (sessions, storages; profile home renders into .generated)
-bench/dsh-home/
-# provider configs rendered per-run by configure_backends()
-bench/.generated/
-# run artifacts live in github.com/pierrebrunelle/max-results
-bench/logs*/
-bench/charts/
-bench/results.jsonl

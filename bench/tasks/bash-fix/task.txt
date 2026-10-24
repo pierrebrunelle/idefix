@@ -1,1 +1,0 @@
-In this repo, health.sh checks a log file for ERROR lines: 'bash health.sh ok.log' must print 'STATUS ok' and exit 0, while 'bash health.sh bad.log' must print 'STATUS fail (3 errors)' and exit 1. The script has two bugs. Do not modify the log files. Fix health.sh, verify both cases in bash, then report.

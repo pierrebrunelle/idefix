@@ -1,1 +1,0 @@
-In this repo, calc.py has TWO bugs: (1) square() multiplies by 2 instead of squaring, and (2) pythag() adds the unsquared values. Because of (1) the test fails in a confusing way - after you fix square() you may still see a failure caused by (2). Use bash to fix calc.py so both are correct, run 'python3 test_calc.py' until it prints TEST PASSED, then report.

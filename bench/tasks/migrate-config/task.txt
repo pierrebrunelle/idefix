@@ -1,1 +1,0 @@
-In this repo, migrate.py should convert app.ini into nested JSON: app.json must be {section: {key: value}} with every key and value preserved verbatim. Running 'python3 migrate.py' currently produces wrong output. Fix migrate.py and run it to regenerate app.json. Do not modify app.ini. Report when done.

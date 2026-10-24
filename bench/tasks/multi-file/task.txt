@@ -1,1 +1,0 @@
-In this repo, test_report.py fails because mean() in stats.py uses integer division, so report.py's summary prints truncated values. Use bash to find and fix the root cause, then run 'python3 test_report.py' to verify TEST PASSED. Keep going until it passes, then report.

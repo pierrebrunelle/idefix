@@ -1,0 +1,188 @@
+{
+  "version": 7,
+  "record": {
+    "identity": {
+      "formatVersion": 4,
+      "createdAt": 1792553732572,
+      "cwd": "/private/var/folders/s4/0zdx499s6sv3_0jll6ccdbh00000gn/T/bench-fix-add-8klyw85_",
+      "isSeeded": false,
+      "inheritedEventCount": 0
+    },
+    "rows": {
+      "title": {
+        "ver": 1,
+        "seq": 14,
+        "val": "In this repo, calc.py has"
+      },
+      "titleInput": {
+        "ver": 3,
+        "seq": 14,
+        "val": {
+          "first": {
+            "seq": 8,
+            "text": "In this repo, calc.py has a bug: add() subtracts instead of adding. Use bash to fix the file, then run 'python3 test_calc.py' to verify it prints TEST PASSED. Keep using the bash tool until the test passes, then report.\n\nDo not modify or delete files matching these patterns: test_*"
+          },
+          "count": 1,
+          "lastSeq": 8
+        }
+      },
+      "llmRetry": {
+        "ver": 1,
+        "seq": 14,
+        "val": {}
+      },
+      "sandboxMode": {
+        "ver": 1,
+        "seq": 14,
+        "val": "workspace-write"
+      },
+      "goal": {
+        "ver": 6,
+        "seq": 14,
+        "val": {
+          "current": null,
+          "seenGoalIds": [],
+          "failure": null
+        }
+      },
+      "plan": {
+        "ver": 3,
+        "seq": 14,
+        "val": {
+          "active": false,
+          "wanted": null,
+          "running": null,
+          "activeAtLastHeader": false
+        }
+      },
+      "tokenUsage": {
+        "ver": 2,
+        "seq": 14,
+        "val": {
+          "totals": {
+            "uncachedInputTokens": 0,
+            "outputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0
+          },
+          "last": null
+        }
+      },
+      "contextPressure": {
+        "ver": 5,
+        "seq": 14,
+        "val": {
+          "surfaceTokens": 2260,
+          "contextWindow": 188800
+        }
+      },
+      "contextBreakdown": {
+        "ver": 5,
+        "seq": 14,
+        "val": {
+          "nodes": [
+            {
+              "seq": 7,
+              "heuristicTokens": 669,
+              "system": true
+            },
+            {
+              "seq": 8,
+              "heuristicTokens": 79,
+              "system": false
+            },
+            {
+              "seq": 9,
+              "heuristicTokens": 138,
+              "system": false
+            },
+            {
+              "seq": 10,
+              "heuristicTokens": 1374,
+              "system": false
+            }
+          ],
+          "breakdown": {
+            "systemTokens": 669,
+            "toolsTokens": 4633,
+            "messageTokens": 1591
+          }
+        }
+      },
+      "todos": {
+        "ver": 2,
+        "seq": 14,
+        "val": null
+      },
+      "turnBoundary": {
+        "ver": 2,
+        "seq": 14,
+        "val": {
+          "openTurnStartSeq": 4,
+          "lastStepStartSeq": 6,
+          "lastStepBoundary": {
+            "kind": "start",
+            "seq": 6
+          },
+          "lastTurn": 1
+        }
+      },
+      "inbox": {
+        "ver": 1,
+        "seq": 14,
+        "val": {
+          "next-turn": [],
+          "next-step": []
+        }
+      },
+      "userQuestions": {
+        "ver": 2,
+        "seq": 14,
+        "val": {
+          "inheritedEventCount": 0,
+          "timed": false,
+          "questions": {
+            "active": [],
+            "settled": []
+          }
+        }
+      },
+      "subagentCatalog": {
+        "ver": 3,
+        "seq": 14,
+        "val": {
+          "inheritedEventCount": 0
+        }
+      },
+      "subagentTiming": {
+        "ver": 3,
+        "seq": 14,
+        "val": {
+          "descriptorSeen": false,
+          "settledMs": 0,
+          "pendingTurnStart": 1792553732587
+        }
+      },
+      "subagent": {
+        "ver": 2,
+        "seq": 14,
+        "val": {}
+      },
+      "subagentModelSelectionPolicy": {
+        "ver": 1,
+        "seq": 14,
+        "val": null
+      },
+      "permissions": {
+        "ver": 2,
+        "seq": 14,
+        "val": {
+          "preset": "workspace-write",
+          "sandbox": "workspace-write",
+          "approval": "ask",
+          "seeded": false
+        }
+      }
+    }
+  }
+}

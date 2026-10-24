@@ -1,4 +1,0 @@
-INFO boot
-INFO serving :8080
-WARN slow request
-INFO done

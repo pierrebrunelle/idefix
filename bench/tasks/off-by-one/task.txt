@@ -1,1 +1,0 @@
-In this repo, seq.py has a bug: first_n(n) should return the first n natural numbers starting at 1, but it returns them starting at 0 and excludes n. Use bash to fix it, then run 'python3 test_seq.py' to verify TEST PASSED. Keep going until it passes, then report.

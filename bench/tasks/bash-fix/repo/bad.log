@@ -1,6 +1,0 @@
-INFO boot
-ERROR connect refused
-INFO retry
-ERROR disk full
-ERROR timeout
-INFO done

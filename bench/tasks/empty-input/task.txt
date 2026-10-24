@@ -1,1 +1,0 @@
-In this repo, stats.py crashes on an empty list. average([]) should return 0.0 instead of raising ZeroDivisionError. Use bash to fix it, then run 'python3 test_stats.py' to verify TEST PASSED. Keep going until it passes, then report.

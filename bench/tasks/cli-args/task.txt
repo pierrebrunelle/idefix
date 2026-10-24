@@ -1,1 +1,0 @@
-In this repo, tool.py should uppercase its input when called with --upper: 'python3 tool.py --upper hello' must print HELLO, and 'python3 tool.py hello' must print hello. The flag is currently ignored. Fix the argument handling and verify both cases with bash, then report.
