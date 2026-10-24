@@ -2,96 +2,130 @@
 
 # max
 
-A minimal coding agent in Mojo: one ~255 KB binary that takes a task,
-talks to a local model over MAX's OpenAI-compatible API, runs the
-model's `bash(command)` calls inside a repo, and prints the answer.
-No Python, no runtime deps beyond libcurl; ~16 MB peak RSS.
+**A minimal, local-first coding agent written in Mojo.**
 
-The bet is that agent capability = model x harness, and the harness
-half should be small enough to hold in your head. max exists to find
-the smallest loop that still closes tasks unattended. Features ship
-when they move a benchmark number, not when they sound useful.
+`max` is a single **~255 KB native binary** that takes a task, talks to a local LLM over Modular MAX's OpenAI-compatible API, executes the model's `bash(command)` calls inside a target repository, and prints the answer. 
+
+- **Zero Python at runtime**
+- **No dependencies beyond `libcurl`**
+- **~16 MB peak RSS** (vs. ~250 MB for Python-based harnesses)
+
+---
+
+## Philosophy
+
+> **Agent capability = Model × Harness.**  
+> The harness half should be small enough to hold in your head.
+
+`max` exists to find the smallest execution loop that reliably closes coding tasks unattended. Every line of harness code has to earn its keep: **features ship when they move a benchmark number, not when they sound useful.**
+
+---
 
 ## Quickstart
 
-Prereqs: `mojo` on PATH to build; Modular's MAX CLI to serve a model.
+### Prerequisites
+- [`mojo`](https://www.modular.com/mojo) on `PATH` (to build)
+- Modular's `max` CLI (to serve a local model)
 
-    make
-    MAX_MODEL=Qwen/Qwen3-1.7B ./scripts/with-max.sh --repo ./project \
-      "Fix the parser bug and run its tests"
+### Build & Run
 
-`with-max.sh` lazily starts `max serve`, runs the task, and cleans up
-what it started. Already serving? `MAX_MODEL=<org/name> ./max --repo
-DIR "task"`.
+```bash
+make
+MAX_MODEL=Qwen/Qwen3-1.7B ./scripts/with-max.sh --repo ./project \
+  "Fix the parser bug and run its tests"
+```
 
-A run looks like:
+`with-max.sh` lazily boots `max serve`, runs the task against the target repo, and tears down what it started. If you already have an OpenAI-compatible server running:
 
-    $ ./max --repo . "test_slugify fails on 'Creme Brulee'; fix it"
-    [model] Reading slugify and its test.
-    [model] lower() runs before the accent strip. Patching.
-    [model] Tests pass.
-    [max] requests=4 commands=3 prompt_tokens=812 tokens=1982+71 elapsed=21s exit=0
-    Fixed: normalize accents before lowercasing in slugify().
+```bash
+MAX_MODEL=<org/name> ./max --repo ./project "Fix the parser bug and run its tests"
+```
 
-Note: our binary is `max`; Modular's CLI is also `max`. Point
-`MAXCLI=/path/to/modular-max` in `with-max.sh` if they collide.
-`./install.sh` puts a `max` wrapper in `~/.local/bin`.
+### Example Run
 
-## Using it
+```text
+$ ./max --repo . "test_slugify fails on 'Creme Brulee'; fix it"
+[model] Reading slugify and its test.
+[model] lower() runs before the accent strip. Patching.
+[model] Tests pass.
+[max] requests=4 commands=3 prompt_tokens=812 tokens=1982+71 elapsed=21s exit=0
+Fixed: normalize accents before lowercasing in slugify().
+```
 
-Say what you want in plain words; max runs the commands to get there:
+> **Note on binary naming:** Both this agent and Modular's CLI are named `max`. If they collide on your `PATH`, point `MAXCLI=/path/to/modular-max` when using `with-max.sh`. Running `./install.sh` installs a `max` wrapper into `~/.local/bin`.
 
-    cd my-project
-    max "the slugify test fails on unicode input - fix it and re-run the tests"
-    max "add a --verbose flag to the cli and update the help text"
-    max                              # REPL on stdin (max> ), cwd is the repo
-    max --repo other/dir "fix the parser bug"
-    printf 'fix the parser\nadd tests for it\n' | max   # piped lines share one session
+---
 
-In the REPL:
+## Usage
 
-    max> tests fail on empty input, fix it
-    max> !python3 test_kit.py       # run a command yourself; no request spent
-    max> /reset                     # drop context, start over
-    max> /quit                      # or Ctrl-D
+Describe what you want in plain English. `max` runs the shell commands required to inspect, patch, and verify the repo:
 
-`AGENTS.md`/`CLAUDE.md` in the repo root load into the system prompt.
-`./max --help` lists every flag and env knob.
+```bash
+cd my-project
 
-Unattended runs: `--continue`/`--resume FILE` replay journals, a
-`status` file shows live progress, compaction rewrites old tool output
-instead of dying at the context limit, retries cover transport errors,
-and every bound is local (requests, wall clock, per-command timeout,
-output caps, token budget, loop guard that stops repeated commands,
-`--notify CMD`). `--sandbox` confines model-issued commands to the repo
-plus tmp (macOS seatbelt). `--bare`
-disables all of it for protocol parity with the reference client
-(`bench/ref_client.py` in pierrebrunelle/max-results).
+# One-shot tasks
+max "the slugify test fails on unicode input - fix it and re-run the tests"
+max "add a --verbose flag to the cli and update the help text"
+max --repo ../other-dir "fix the parser bug"
 
-## Benchmark
+# Multi-step piped session (lines share context)
+printf 'fix the parser\nadd tests for it\n' | max
 
-Rows are verified by each task's own script, not the model's say-so
-(github.com/pierrebrunelle/max-results, private).
+# Interactive REPL (uses current working directory as repo)
+max
+```
 
-- 6-task suite, Qwen3-4B, 2 reps: aider 100%, **max --bare 75%**,
-  pi 58%; our binary runs at ~16 MB peak RSS vs aider's ~250 MB.
-- `long-horizon` (6 bugs across 3 files), Qwen3-14B: aider and pi
-  pass; max went 0/4. Free-form `bash` let the model report an edit
-  that never landed, where aider's patch format fails loudly - so tool
-  results now carry `changed_files`, and a write-shaped command that
-  changed nothing gets an explicit `warning`. The remaining gap is the
-  model's: `snake_to_camel` got rewritten two dozen ways, all wrong.
+### Interactive REPL
 
-Method, tasks and repro: the `bench/` dir of max-results.
+```text
+max> tests fail on empty input, fix it
+max> !python3 test_kit.py       # run a shell command directly; 0 tokens spent
+max> /reset                     # clear conversation context and start fresh
+max> /quit                      # exit (or Ctrl-D)
+```
 
-## Limits
+If `AGENTS.md` or `CLAUDE.md` is present in the repository root, `max` automatically loads it into the system prompt. Run `./max --help` for the full list of flags and environment variables.
 
-One task loop, one bash tool, no sandboxing: commands run with your
-permissions in the repo path, so use an isolated checkout when it
-matters. No streaming, remote providers, MCP or subagents; the model
-server is a separate process the agent never manages. Env vars named
-for credentials (KEY, TOKEN, SECRET, PASSWORD, CREDENTIAL) are
-stripped from model-issued commands.
+---
 
-If you want a polished assistant, sandboxed execution or remote APIs,
-use aider or pi. max is for measuring how small the loop can get.
+## Unattended Runs & Guardrails
+
+`max` is built to run unattended loops without runaway context or silent hangs:
+
+- **Journaling & Resume:** Replay or continue interrupted sessions via `--continue` or `--resume FILE`, with live progress written to a `status` file.
+- **Context Compaction:** Automatically compacts older tool output instead of crashing at the context window limit.
+- **Strict Local Bounds:** Enforces hard caps on request count, wall-clock time, per-command timeout, stdout/stderr output size, and total token budget.
+- **Loop & No-Op Detection:** A loop guard halts repeated identical commands. Tool results track `changed_files`, and write-shaped commands that leave the working tree untouched emit an explicit warning to the model.
+- **Transport Resilience:** Automatic retries across transient local server/transport errors, plus `--notify CMD` hooks on completion.
+- **macOS Seatbelt Sandboxing (`--sandbox`):** Confines model-issued commands to the target repository and `/tmp`.
+- **Protocol Parity Mode (`--bare`):** Disables all harness guardrails for strict protocol parity with the reference benchmark client (`bench/ref_client.py` in `pierrebrunelle/max-results`).
+
+---
+
+## Benchmarks
+
+Every benchmark row is verified by the task's independent test script—never by the model's self-report (full methodology, tasks, and reproduction harness in `pierrebrunelle/max-results`).
+
+### 6-Task Suite (`Qwen3-4B`, 2 reps)
+
+| Harness | Pass Rate | Peak RSS | Runtime Stack |
+| :--- | :---: | :---: | :--- |
+| `aider` | 100% | ~250 MB | Python |
+| **`max --bare`** | **75%** | **~16 MB** | **Mojo (native binary)** |
+| `pi` | 58% | — | — |
+
+### Failure Analysis: `long-horizon` (6 bugs across 3 files, `Qwen3-14B`)
+- **Result:** `aider` and `pi` pass; `max` went `0/4`.
+- **Diagnosis:** Free-form `bash` allowed the model to think an edit landed when it hadn't, whereas `aider`'s structured diff format fails loudly on malformed patches.
+- **Harness Fix:** Tool results now explicitly return `changed_files`, and write-shaped commands that modify zero files return an explicit `warning` to the model. The remaining gap on this task is model capability (`snake_to_camel` was rewritten two dozen ways, all wrong).
+
+---
+
+## Scope & Limits
+
+- **Single loop, single tool:** One task loop and one `bash(command)` tool.
+- **Execution permissions:** Unless `--sandbox` (macOS seatbelt) is passed, commands execute with your user permissions inside the repo path. Use an isolated checkout or container when running untrusted tasks.
+- **Credential scrubbing:** Environment variables matching `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, or `CREDENTIAL` are automatically stripped from model-issued subshells.
+- **Deliberate non-goals:** No token streaming, no remote cloud API providers, no MCP, and no subagents. The model server is a separate OS process that the binary never manages directly.
+
+If you want a polished pair-programming UI, cross-platform container sandboxing, or hosted cloud APIs, use **aider** or **pi**. `max` is a laboratory for measuring how small the agent loop can get.
