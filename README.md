@@ -19,6 +19,38 @@
 
 `max` exists to find the smallest execution loop that reliably closes coding tasks unattended. Every line of harness code has to earn its keep: **features ship when they move a benchmark number, not when they sound useful.**
 
+## Where it sits
+
+```text
+USER ── "fix the parser bug"
+  │
+  ▼
+HARNESS (the agent loop)
+  ├─ opencode ~1.05M LOC │ dsh ~569k │ codex ~420k+ │ pi ~100k
+  ├─ aider ~22k + deps   │ max ~1.5k LOC -> 300KB binary
+  │  tools: aider=text patches, others=5..23 tools, max=ONE (bash)
+  ▼  POST /v1/chat/completions
+INFERENCE SERVER (separate process)
+  ├─ Modular `max serve`  (verified: KV prefix reuse)
+  ├─ ollama               (verified end-to-end)
+  └─ LM Studio / llama-server / vLLM (OpenAI-compatible)
+  ▼  message.tool_calls[bash(command)]
+MODEL  Qwen3-1.7B..14B - the intelligence; the harness only feeds it.
+
+EXECUTION (inside max)
+  model tool_call ──► fork+exec /bin/bash -c "cmd"
+                        ├─ process group + deadline + timeout
+                        ├─ env scrub (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)
+                        ├─ PATH gains `max edit` (exact-match edit helper)
+                        └─ --sandbox: seatbelt, writes = repo + tmp only
+                    ▼
+              filesystem (the repo)
+                  pre/post: snapshot -> changed_files + compact diff
+                    + "no files changed" warning on silent no-op edits
+                    ▼
+        tool result -> back to the model for the next turn
+```
+
 ---
 
 ## Quickstart
