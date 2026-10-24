@@ -61,7 +61,8 @@ Unattended runs: `--continue`/`--resume FILE` replay journals, a
 instead of dying at the context limit, retries cover transport errors,
 and every bound is local (requests, wall clock, per-command timeout,
 output caps, token budget, loop guard, `--notify CMD`). `--bare`
-disables all of it for protocol parity with `tests/ref_client.py`.
+disables all of it for protocol parity with the reference client
+(`bench/ref_client.py` in pierrebrunelle/max-results).
 
 ## Benchmark
 

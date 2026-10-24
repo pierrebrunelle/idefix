@@ -49,7 +49,8 @@ elapsed=$(python3 -c "import time;print(int(time.time()-$start))")
 check "sleep exit" 0 "$rc"
 check "sleep killed fast" 1 "$([ "$elapsed" -le 6 ] && echo 1 || echo 0)"
 grep -q "exit_code..124" /tmp/stub_sleep.log && echo "PASS sleep 124" || { echo "FAIL sleep 124"; cat /tmp/stub_sleep.log; FAIL=1; }
-pgrep -f "exec sleep 30" >/dev/null && { echo "FAIL orphan survived"; FAIL=1; } || echo "PASS no orphan"
+# post-exec the cmdline is "sleep 37"; match it, not the wrapper text
+pgrep -f "sleep 37" >/dev/null && { echo "FAIL orphan survived"; FAIL=1; } || echo "PASS no orphan"
 
 # 6. budget: max-requests 1 -> exit 2
 out=$(run_mode normal ./max --repo . --max-requests 1 "task" 2>/dev/null); rc=$?

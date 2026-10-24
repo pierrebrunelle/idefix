@@ -133,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif MODE == "sleep":
                 resp = msg_response(
-                    calls=[tool_call("call_s", "(sleep 30 &) ; exec sleep 30")],
+                    calls=[tool_call("call_s", "(sleep 37 &) ; exec sleep 37")],
                     finish="tool_calls",
                 )
             elif MODE == "bigusage":
