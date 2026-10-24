@@ -1,3 +1,0 @@
-- name: aider/extra_params
-  extra_params:
-    temperature: 0.6
