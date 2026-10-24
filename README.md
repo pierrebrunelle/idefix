@@ -22,33 +22,40 @@
 ## Where it sits
 
 ```text
-USER ── "fix the parser bug"
-  │
-  ▼
-HARNESS (the agent loop)
-  ├─ opencode ~1.05M LOC │ dsh ~569k │ codex ~420k+ │ pi ~100k
-  ├─ aider ~22k + deps   │ max ~1.5k LOC -> 300KB binary
-  │  tools: aider=text patches, others=5..23 tools, max=ONE (bash)
-  ▼  POST /v1/chat/completions
-INFERENCE SERVER (separate process)
-  ├─ Modular `max serve`  (verified: KV prefix reuse)
-  ├─ ollama               (verified end-to-end)
-  └─ LM Studio / llama-server / vLLM (OpenAI-compatible)
-  ▼  message.tool_calls[bash(command)]
-MODEL  Qwen3-1.7B..14B - the intelligence; the harness only feeds it.
+FRAMEWORKS  Mastra - NeMo OO-Agents - LangGraph
+            build-your-own-agent kits; a different layer, not competitors.
+            max deliberately uses no framework.
 
-EXECUTION (inside max)
-  model tool_call ──► fork+exec /bin/bash -c "cmd"
-                        ├─ process group + deadline + timeout
-                        ├─ env scrub (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)
-                        ├─ PATH gains `max edit` (exact-match edit helper)
-                        └─ --sandbox: seatbelt, writes = repo + tmp only
-                    ▼
-              filesystem (the repo)
-                  pre/post: snapshot -> changed_files + compact diff
-                    + "no files changed" warning on silent no-op edits
-                    ▼
-        tool result -> back to the model for the next turn
+USER  "fix the parser bug"   (one-shot | REPL | piped session)
+  |
+  v
+HARNESS  (ready-to-run agent loops)
+  opencode ~1.05M LOC - dsh ~569k - codex ~420k+ - pi ~100k
+  aider ~22k + ~100 deps     max ~1.5k LOC -> 300KB native binary
+  a bare Python loop covers ~90% of trivial tasks; max is that loop
+  plus the verified hardening (bounds, honest results, journal, sandbox)
+  |  POST /v1/chat/completions  (+ tools[])
+  v
+INFERENCE SERVER  (separate OS process; max never manages it)
+  Modular `max serve` - verified: KV prefix cache reuse
+  ollama              - verified: qwen3:4b drove real tasks
+  LM Studio - llama-server - vLLM  (OpenAI-compatible contract)
+  |  message.tool_calls[bash(command)]
+  v
+MODEL  Qwen3-1.7B..14B  - the intelligence; the harness only feeds it
+
+EXECUTION  (inside max)
+  tool_call -> fork+exec /bin/bash -c "cmd"
+     ├─ process group; killpg on timeout/deadline
+     ├─ env scrub: KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL
+     ├─ PATH gains `max edit`  (exact-match edits fail loud)
+     └─ --sandbox (opt-in): seatbelt, writes = repo + tmp only
+            v
+     filesystem (the repo)
+        pre:  md5 snapshot + APFS clonefile
+        post: changed_files + compact diff + no-op warning
+            v
+     tool result -> next model turn   (journal replays the session)
 ```
 
 ---
