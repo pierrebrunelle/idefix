@@ -40,9 +40,18 @@ jobs:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
+      - name: Generate checksums
+        # One checksums.txt covering both tarballs; bare basenames so the
+        # installer can verify a downloaded file with `shasum -a 256 -c`.
+        run: |
+          for d in max-darwin-arm64 max-linux-x86_64; do
+            (cd "$d" && shasum -a 256 *.tar.gz)
+          done > checksums.txt
+          cat checksums.txt
       - name: Attach binaries to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             max-darwin-arm64/max-darwin-arm64.tar.gz
             max-linux-x86_64/max-linux-x86_64.tar.gz
+            checksums.txt
