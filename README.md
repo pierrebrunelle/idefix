@@ -159,7 +159,11 @@ Every row is verified by the task's independent test script — never by the mod
 | **`idefix --bare`** | **75%** | **~16 MB** | **Mojo (native)** |
 | `pi` | 58% | — | — |
 
+A hierarchical posterior over all scored runs (max-results `ANALYSIS.md`) says the honest version is: **same-tier pass rates as aider/pi at ~1/15th the footprint** — the gap between these rows is inside the noise at this sample size.
+
 **Failure analysis** (`long-horizon`, `Qwen3-14B`): `aider` and `pi` pass, `idefix` went 0/4 — free-form `bash` let the model *think* an edit landed when it hadn't. The fix shipped in the harness: `changed_files` in every tool result, an explicit warning on no-op writes, and `idefix edit` for loud-failing structured edits. The remaining gap is model capability.
+
+**Harder tasks** (`tree-directory-parser`, `analyze-access-logs`, `jsonl-aggregator` — Terminal-Bench): Qwen3-4B went **0/16 across idefix, pi, aider and dsh**, every harness producing a fabricated "verified" claim that never ran a check. Nemotron-E4B passed 2/4 on the same grid — read inputs first, self-corrected, zero fabrications. At 4B the binding constraint is the model, and it shows up identically in every harness.
 
 ## Scope & Limits
 
