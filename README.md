@@ -80,12 +80,21 @@ cd my-project
 idefix "the slugify test fails on unicode input - fix it and re-run the tests"
 ```
 
-The first run lazily boots a local server (`Qwen/Qwen3-1.7B`, ~2 GB RAM), runs your task, and shuts it down. Already running one? Point at it and it gets used instead:
+The first run lazily boots a local server (`Qwen/Qwen3-1.7B`, ~2 GB RAM), runs your task, and shuts it down. Already running one? The wrapper probes `ollama :11434`, `max serve :8000`, and `LM Studio :1234` — if any answers, `idefix` uses it with zero exports (adopting the loaded model where the server reports one).
+
+Point at something specific, once:
 
 ```bash
 export IDEFIX_BASE_URL=http://127.0.0.1:11434/v1   # e.g. ollama
 export IDEFIX_MODEL=qwen3:4b
 idefix "fix the parser bug and run its tests"
+```
+
+or persist it in `~/.idefix/config` (key=value lines; env vars override):
+
+```text
+base_url=http://127.0.0.1:11434/v1
+model=hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M
 ```
 
 ```text

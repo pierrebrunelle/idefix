@@ -27,6 +27,19 @@ esac
 # The model-server CLI defaults to `max` (Modular's). If this script is
 # itself on PATH (any name, via symlink or not), skip candidates
 # that resolve to it: -ef compares files, not strings.
+# <state>/config (key=value) seeds unset vars; env always wins.
+conf="${IDEFIX_STATE_DIR:-${MAX_STATE_DIR:-$HOME/.idefix}}/config"
+if [ -f "$conf" ]; then
+    while IFS='=' read -r k v; do
+        case "$k" in
+            model)    : "${IDEFIX_MODEL:=$v}" ;;
+            base_url) : "${IDEFIX_BASE_URL:=$v}" ;;
+            api_key)  : "${IDEFIX_API_KEY:=$v}" ;;
+            maxcli)   : "${IDEFIX_MAXCLI:=$v}" ;;
+        esac
+    done < "$conf"
+fi
+
 # IDEFIX_* are the canonical agent env vars; legacy MAX_* still work.
 export MAX_MODEL="${IDEFIX_MODEL:-${MAX_MODEL:-}}"
 export MAX_API_KEY="${IDEFIX_API_KEY:-${MAX_API_KEY:-}}"
@@ -40,7 +53,21 @@ $(type -aP max 2>/dev/null)
 EOF
 fi
 USER_MODEL="${MAX_MODEL:-}"   # an explicit choice beats whatever is served
-BASE="${IDEFIX_BASE_URL:-${MAX_BASE_URL:-http://127.0.0.1:8000/v1}}"
+BASE="${IDEFIX_BASE_URL:-${MAX_BASE_URL:-}}"
+if [ -z "$BASE" ]; then
+    # probe the usual local servers first so `idefix` just works when
+    # ollama/LM Studio is already up: ollama :11434, max serve :8000,
+    # LM Studio :1234. Default stays :8000 for the lazy-boot path.
+    for port in 11434 8000 1234; do
+        if curl -sf -m 1 "http://127.0.0.1:$port/v1/models" >/dev/null 2>&1; then
+            BASE="http://127.0.0.1:$port/v1"
+            break
+        fi
+    done
+    BASE="${BASE:-http://127.0.0.1:8000/v1}"
+fi
+# the binary reads its own env; hand it whichever BASE won.
+export IDEFIX_BASE_URL="$BASE"
 
 # Server up? Sends MAX_API_KEY when set so authenticated endpoints probe true.
 up() {
@@ -60,13 +87,21 @@ served_ids() {
     fi | tr ',' '\n' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
 }
 
+# The actually-loaded model where the server reports one: ollama exposes
+# /api/ps (resident model), so we don't adopt a stale id out of /models.
+loaded_id() {
+    curl -sf -m 2 "${BASE%/v1}/api/ps" 2>/dev/null \
+        | tr ',' '\n' | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | head -1
+}
+
 started=""
 LOG=""
 if up; then
     ids="$(served_ids || true)"
     if [ -z "$USER_MODEL" ]; then
-        # no model requested: take whatever the answering server serves
-        export MAX_MODEL="$(printf '%s\n' "$ids" | head -1)"
+        # no model requested: prefer the resident model, else first served id
+        export MAX_MODEL="$(loaded_id || true)"
+        [ -n "$MAX_MODEL" ] || export MAX_MODEL="$(printf '%s\n' "$ids" | head -1)"
         export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
     else
         export MAX_MODEL="$USER_MODEL"

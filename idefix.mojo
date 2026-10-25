@@ -25,6 +25,7 @@ comptime SYSTEM_SUFFIX = """
 
 comptime TOOLS = '{"type":"function","function":{"name":"bash","description":"Run a bash command in the repository directory. Returns exit code and bounded merged stdout/stderr output.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"The bash command to run"}},"required":["command"],"additionalProperties":false}}}'
 comptime VERSION = "0.1.0"
+comptime DEFAULT_BASE = "http://127.0.0.1:8000/v1"
 
 
 struct Config(Copyable):
@@ -63,7 +64,7 @@ struct Config(Copyable):
         self.repo = "."
         self.instructions = ""
         self.task = ""
-        self.base_url = "http://127.0.0.1:8000/v1"
+        self.base_url = DEFAULT_BASE
         self.model = ""
         self.bearer = ""
         self.max_requests = 40
@@ -235,13 +236,42 @@ def parse_args() raises -> Config:
     if len(positional) == 1:
         cfg.task = positional[0]
     # no TASK -> REPL mode (validated after env checks)
+    if cfg.state_root == "":
+        cfg.state_root = getenv("IDEFIX_STATE_DIR")
+    if cfg.state_root == "":
+        var home = getenv("HOME")
+        if home != "":
+            cfg.state_root = home + "/.idefix"
+    # <state_root>/config (key=value): lowest-precedence connection defaults,
+    # so `idefix "task"` works with zero exports once configured.
+    if cfg.state_root != "":
+        try:
+            var conf = read_file(cfg.state_root + "/config")
+            for line in conf.split("\n"):
+                var eq = line.find("=")
+                if eq <= 0 or line.strip().find("#") == 0:
+                    continue
+                var k = String(line[byte= :eq].strip())
+                var v = String(line[byte= eq + 1 :].strip())
+                if k == "base_url" and cfg.base_url == DEFAULT_BASE:
+                    cfg.base_url = v
+                elif k == "model" and cfg.model == "":
+                    cfg.model = v
+                elif k == "api_key" and cfg.bearer == "":
+                    cfg.bearer = v
+        except:
+            pass
     var env_base = env2("IDEFIX_BASE_URL", "MAX_BASE_URL")
     if env_base != "":
         cfg.base_url = env_base
-    cfg.model = env2("IDEFIX_MODEL", "MAX_MODEL")
+    var env_model = env2("IDEFIX_MODEL", "MAX_MODEL")
+    if env_model != "":
+        cfg.model = env_model
+    var env_key = env2("IDEFIX_API_KEY", "MAX_API_KEY")
+    if env_key != "":
+        cfg.bearer = env_key
     if cfg.model == "":
         die("IDEFIX_MODEL is not set. " + usage(), 64)
-    cfg.bearer = env2("IDEFIX_API_KEY", "MAX_API_KEY")
     cfg.bindir = bindings.self_dir()
     var acc = cfg.repo
     var accrc = external_call["access", c_int](acc.as_c_string_span().ptr(), c_int(0))
@@ -266,12 +296,6 @@ def parse_args() raises -> Config:
             or stmp.find('"') >= 0 or stmp.find("\\") >= 0
         ):
             die("--sandbox: repo path and TMPDIR must not contain '\"' or '\\'", 64)
-    if cfg.state_root == "":
-        cfg.state_root = getenv("IDEFIX_STATE_DIR")
-    if cfg.state_root == "":
-        var home = getenv("HOME")
-        if home != "":
-            cfg.state_root = home + "/.idefix"
     if not cfg.bare and cfg.state_root != "":
         cfg.session_dir = (
             cfg.state_root + "/sessions/"
