@@ -700,37 +700,39 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 if not cfg.bare:
                                     # hash snapshot so "rewritten" and "changed" are
                                     # different answers; sed -i exits 0 on a no-match
-                                    mark = cfg.session_dir + "/cmdmark-" + String(bindings.pid())
-                                    if cfg.session_dir == "":
-                                        mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                     var hw = bindings.run_capture(
-                                        "command -v md5sum >/dev/null"
-                                        + " && echo md5sum || echo 'md5 -r'",
+                                        "if command -v md5sum >/dev/null; then echo md5sum;"
+                                        + " elif command -v md5 >/dev/null; then echo 'md5 -r'; fi",
                                         cfg.repo, 64, 5000, False,
                                     )
+                                    # no hasher: mark stays "" and the whole
+                                    # snapshot/diff stage stays off this command
                                     if hw[1] == 0 and String(hw[0].strip()) != "":
                                         hasher = String(hw[0].strip())
-                                    var snap = "find . "
-                                    if cfg.session_dir.find(cfg.repo + "/") == 0:
-                                        snap += "-path './" + String(
-                                            cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
-                                        ) + "' -prune -o "
-                                    # files >=50M skip hashing; a size line keeps
-                                    # them visible to changed_files (+48M overlaps
-                                    # the boundary so nothing falls between)
-                                    snap += (
-                                        "-name .git -prune -o -name .max-state -prune -o "
-                                        + "-type f \\( -size -50M -exec " + hasher
-                                        + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
-                                        + " 2>/dev/null | sort > " + mark
-                                    )
-                                    _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
-                                    tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
-                                    var cr = bindings.run_capture(
-                                        "rm -rf " + tree + "; cp -Rc . " + tree,
-                                        cfg.repo, 64, 60000, False,
-                                    )
-                                    clone_ok = cr[1] == 0
+                                        mark = cfg.session_dir + "/cmdmark-" + String(bindings.pid())
+                                        if cfg.session_dir == "":
+                                            mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
+                                        var snap = "find . "
+                                        if cfg.session_dir.find(cfg.repo + "/") == 0:
+                                            snap += "-path './" + String(
+                                                cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
+                                            ) + "' -prune -o "
+                                        # files >=50M skip hashing; a size line keeps
+                                        # them visible to changed_files (+48M overlaps
+                                        # the boundary so nothing falls between)
+                                        snap += (
+                                            "-name .git -prune -o -name .max-state -prune -o "
+                                            + "-type f \\( -size -50M -exec " + hasher
+                                            + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
+                                            + " 2>/dev/null | sort > " + mark
+                                        )
+                                        _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
+                                        tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
+                                        var cr = bindings.run_capture(
+                                            "rm -rf " + tree + "; cp -Rc . " + tree,
+                                            cfg.repo, 64, 60000, False,
+                                        )
+                                        clone_ok = cr[1] == 0
                                 var cmd_timeout = cfg.max_command_ms
                                 var left_ms = (deadline - bindings.now_seconds()) * 1000
                                 if left_ms < cmd_timeout:
