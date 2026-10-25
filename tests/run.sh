@@ -208,7 +208,40 @@ check "detach exit" 0 "$rc"
 sleep 1
 ! pgrep -f "sleep 29" >/dev/null && echo "PASS detach orphan killed" || { echo "FAIL detach orphan killed"; pgrep -fl "sleep 29"; pkill -f "sleep 29"; FAIL=1; }
 
-# 13r. with-max.sh: server already answering -> runs task, never serves
+# 13r. --max-prompt-tokens halts the run with exit 2
+out=$(run_mode bigusage ./max --repo . --max-prompt-tokens 50 "task" 2>/dev/null); rc=$?
+check "promptcap exit" 2 "$rc"
+
+# 13s. --notify CMD runs when the run finishes
+nf=/tmp/max-notify-$$
+rm -f "$nf"
+out=$(run_mode normal ./max --repo . --notify "touch $nf" "task" 2>/dev/null); rc=$?
+check "notify exit" 0 "$rc"
+[ -f "$nf" ] && echo "PASS notify ran" || { echo "FAIL notify ran"; FAIL=1; }
+rm -f "$nf"
+
+# 13t. mid-batch-cut journal: --resume drops unpaired assistant tool_calls
+jf=/tmp/max-journal-cut-$$.jsonl
+cat > "$jf" <<'JEOF'
+{"ev":"run","ts":1}
+{"ev":"msg","m":{"role":"user","content":"hi"}}
+{"ev":"msg","m":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo x\"}"}}]}}
+JEOF
+out=$(run_mode finalans ./max --repo . --resume "$jf" "task" 2>/dev/null); rc=$?
+check "resumecut exit" 0 "$rc"
+check "resumecut answer" "Done." "$out"
+rm -f "$jf"
+
+# 13u. misc one-liners: MAX_MODEL required, nan temp, /exit alias
+out=$(env -u MAX_MODEL MAX_BASE_URL=http://127.0.0.1:1/v1 ./max --repo . "task" 2>&1); rc=$?
+check "modelreq exit" 64 "$rc"
+MAX_BASE_URL=http://127.0.0.1:1/v1 MAX_MODEL=test ./max --repo . --temperature nan "task" >/dev/null 2>&1; rc=$?
+check "nantemp exit" 64 "$rc"
+out=$(printf 'a\n/exit\n' | run_mode finalans ./max --repo . 2>/dev/null); rc=$?
+check "exitalias exit" 0 "$rc"
+[ "$(echo "$out" | grep -c 'Done.')" = "1" ] && echo "PASS /exit alias" || { echo "FAIL /exit alias: $out"; FAIL=1; }
+
+# 13v. with-max.sh: server already answering -> runs task, never serves
 out=$(run_mode normal env MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
 check "with-max exit" 0 "$rc"
 check "with-max answer" "Done." "$out"

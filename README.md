@@ -148,7 +148,7 @@ Hacking on `max` itself: `make` builds `./max` in the repo root, and `scripts/wi
 
 - **Journaling & Resume:** Replay or continue interrupted sessions via `--continue` or `--resume FILE`, with live progress written to a `status` file.
 - **Context Compaction:** Automatically compacts older tool output instead of crashing at the context window limit.
-- **Strict Local Bounds:** Enforces hard caps on request count, wall-clock time, per-command timeout, stdout/stderr output size, and total token budget.
+- **Strict Local Bounds:** Enforces hard caps on request count, wall-clock time, per-command timeout, stdout/stderr output size, and per-request prompt size.
 - **Loop & No-Op Detection:** A loop guard halts repeated identical commands. Tool results track `changed_files`, and write-shaped commands that leave the working tree untouched emit an explicit warning to the model.
 - **Structured Edits (`max edit`):** `max` is on `PATH` inside model-issued commands, so the model can run `max edit FILE <<'EOF'` with `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks. The search text must match exactly once or the file is left untouched; a `.py` result that fails `py_compile` is rejected with the compiler's error.
 - **Edit Feedback:** When a command changes files, the tool result includes a compact unified diff of what actually changed.
