@@ -3,16 +3,29 @@
 # run the built max binary. If a server already answers at MAX_BASE_URL, it
 # is left alone. Runs from the caller's cwd: --repo paths are relative to it.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Resolve symlinks so $SELF is where the script physically lives. Repo
+# layout: scripts/with-max.sh drives ../max. Bundle/install layout:
+# with-max sits next to the max binary it drives.
+SELF="$0"
+while [ -L "$SELF" ]; do
+    dir="$(cd "$(dirname "$SELF")" && pwd)"
+    SELF="$(readlink "$SELF")"
+    case "$SELF" in /*) ;; *) SELF="$dir/$SELF" ;; esac
+done
+ROOT="$(cd "$(dirname "$SELF")" && pwd)"
+# -ef keeps a wrapper installed as "max" from resolving to itself; -f
+# because a directory passes -x.
+if [ ! -f "$ROOT/max" ] || [ "$ROOT/max" -ef "$SELF" ]; then
+    ROOT="$(cd "$ROOT/.." && pwd)"
+fi
 
 # The model-server CLI defaults to `max` (Modular's). If this script is
-# itself installed as `max` and shadows it, pick the next `max` on PATH.
+# itself on PATH as `max` (any name, via symlink or not), skip candidates
+# that resolve to it: -ef compares files, not strings.
 MAXCLI="${MAXCLI:-}"
 if [ -z "$MAXCLI" ]; then
-    self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-    MAXCLI="max"
     while IFS= read -r c; do
-        [ -n "$c" ] && [ "$c" != "$self" ] && MAXCLI="$c" && break
+        [ -n "$c" ] && [ ! "$c" -ef "$SELF" ] && MAXCLI="$c" && break
     done <<EOF
 $(type -aP max 2>/dev/null)
 EOF
@@ -32,6 +45,14 @@ up() {
 started=""
 LOG=""
 if ! up; then
+    if [ -z "$MAXCLI" ]; then
+        echo "with-max: no server at $BASE and no model-server CLI on PATH; set MAXCLI=/path/to/modular-max or start a server" >&2
+        exit 1
+    fi
+    if ! command -v "$MAXCLI" >/dev/null; then
+        echo "with-max: '$MAXCLI' not found; set MAXCLI=/path/to/modular-max" >&2
+        exit 1
+    fi
     if ! "$MAXCLI" --help 2>&1 | grep -qi serve; then
         echo "with-max: $MAXCLI has no 'serve' command (the agent binary shadows Modular's max?); set MAXCLI=/path/to/modular-max" >&2
         exit 1
@@ -55,6 +76,10 @@ if ! up; then
         echo "with-max: server did not come up; see $LOG" >&2
         exit 1
     }
+fi
+if [ ! -f "$ROOT/max" ] || [ ! -x "$ROOT/max" ]; then
+    echo "with-max: no runnable max binary at $ROOT/max" >&2
+    exit 1
 fi
 "$ROOT/max" "$@"
 rc=$?

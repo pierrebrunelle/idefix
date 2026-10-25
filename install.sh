@@ -13,8 +13,7 @@ DEST="$HOME/.local/max"
 rm -rf "$DEST"
 mkdir -p "$DEST" "$HOME/.local/bin"
 cp -R bundle/. "$DEST/"
-# The wrapper is with-max.sh with ROOT rewritten to the install dir.
-sed "s|^ROOT=.*|ROOT=\"$DEST\"|" scripts/with-max.sh > "$HOME/.local/bin/max"
-chmod +x "$HOME/.local/bin/max"
+# bin/max is a symlink to the bundle's lazy-serve wrapper (with-max).
+ln -sf "$DEST/with-max" "$HOME/.local/bin/max"
 echo "installed: $HOME/.local/bin/max (-> $DEST)"
 echo "usage:     max 'fix the parser bug'   # from inside any repo"

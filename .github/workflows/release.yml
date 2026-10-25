@@ -21,13 +21,15 @@ jobs:
           python-version: "3.12"
       - run: pip install modular
       - name: Build
-        run: make MOJO="$(python -c 'import modular, os; print(os.path.join(os.path.dirname(modular.__file__), "bin", "mojo"))')"
+        run: make bundle MOJO="$(python -c 'import modular, os; print(os.path.join(os.path.dirname(modular.__file__), "bin", "mojo"))')"
       - name: Test (linux/macos smoke)
-        run: ./max --help | grep -q max
+        run: ./bundle/max --help | grep -q max
+      - name: Package bundle (binary + runtime dylibs)
+        run: tar -czf "${{ matrix.artifact }}.tar.gz" -C bundle .
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: max
+          path: ${{ matrix.artifact }}.tar.gz
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -39,5 +41,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            max-darwin-arm64/max
-            max-linux-x86_64/max
+            max-darwin-arm64/max-darwin-arm64.tar.gz
+            max-linux-x86_64/max-linux-x86_64.tar.gz

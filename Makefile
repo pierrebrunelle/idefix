@@ -22,8 +22,9 @@ bundle: max
 	rm -rf bundle
 	mkdir -p bundle
 	cp max bundle/
+	cp scripts/with-max.sh bundle/with-max
 	for lib in libKGENCompilerRTShared libAsyncRTMojoBindings libMSupportGlobals libAsyncRTRuntimeGlobals ; do \
-		f=$$(find "$$(dirname $$(dirname $$(which $(MOJO))))" -name "$$lib.dylib" | head -1) ; \
+		f=$$(find "$$(dirname "$$(dirname "$$(command -v $(MOJO))")")" -name "$$lib.dylib" | head -1) ; \
 		cp "$$f" bundle/ ; \
 	done
 	install_name_tool -delete_rpath "$$(otool -l bundle/max | grep -A2 LC_RPATH | grep path | head -1 | awk '{print $$2}')" bundle/max || true
