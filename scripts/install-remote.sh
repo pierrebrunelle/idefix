@@ -55,4 +55,22 @@ chmod +x "$DEST/with-max"
 ln -sf "$DEST/with-max" "$BINDIR/max"
 
 echo "installed: $BINDIR/max (-> $DEST)"
-echo "next:      cd your-project && max 'fix the parser bug'"
+
+# Reachability check: `max` is only usable if it resolves to this symlink.
+resolved="$(command -v max 2>/dev/null || true)"
+if [ "$resolved" != "$BINDIR/max" ]; then
+    echo
+    echo "max: note: 'max' on PATH resolves to '${resolved:-nothing}', not this install." >&2
+    case ":$PATH:" in
+        *":$BINDIR:"*) ;;
+        *) echo "max: $BINDIR is not on PATH." >&2 ;;
+    esac
+    if [ -n "$resolved" ]; then
+        echo "max: another 'max' CLI (likely Modular's) owns that name;" >&2
+        echo "max: the wrapper still finds it as the model server." >&2
+    fi
+    echo "max: fix:  echo 'export PATH=\"$BINDIR:\$PATH\"' >> ~/.zshrc && source ~/.zshrc" >&2
+    echo "max: or run directly: $BINDIR/max 'task'" >&2
+else
+    echo "next:      cd your-project && max 'fix the parser bug'"
+fi

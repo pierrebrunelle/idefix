@@ -16,4 +16,22 @@ cp -R bundle/. "$DEST/"
 # bin/max is a symlink to the bundle's lazy-serve wrapper (with-max).
 ln -sf "$DEST/with-max" "$HOME/.local/bin/max"
 echo "installed: $HOME/.local/bin/max (-> $DEST)"
-echo "usage:     max 'fix the parser bug'   # from inside any repo"
+
+# Reachability check: `max` is only usable if it resolves to this symlink.
+resolved="$(command -v max 2>/dev/null || true)"
+if [ "$resolved" != "$HOME/.local/bin/max" ]; then
+    echo
+    echo "NOTE: 'max' on PATH resolves to '${resolved:-nothing}', not this install."
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) echo "     ~/.local/bin is not on PATH." ;;
+    esac
+    if [ -n "$resolved" ]; then
+        echo "     Modular's own 'max' CLI owns that name; the wrapper still"
+        echo "     finds it as the model server."
+    fi
+    echo "     fix:  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc && source ~/.zshrc"
+    echo "     or run directly: $HOME/.local/bin/max 'task'"
+else
+    echo "usage:     max 'fix the parser bug'   # from inside any repo"
+fi

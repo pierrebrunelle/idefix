@@ -71,6 +71,7 @@ pip install modular        # or: pipx install modular
 # 2. Build and install the agent (puts `max` on your PATH)
 git clone https://github.com/pierrebrunelle/max.git
 cd max && ./install.sh
+max --version   # should print "max 0.x", not "MAX 2x" (see note below)
 
 # 3. Use it - from inside any project folder
 cd my-project
@@ -103,8 +104,12 @@ Fixed: normalize accents before lowercasing in slugify().
 ```
 
 > **Note on binary naming:** Both this agent and Modular's CLI are named `max`.
-> The installed wrapper finds the other `max` on your `PATH` automatically;
-> if it can't, point `MAXCLI=/path/to/modular-max` at Modular's CLI.
+> `pip install modular` puts Modular's `max` on PATH first, so `max` may
+> resolve to it (`MAX 2x.y` is Modular's, `max 0.x` is this agent). Fix with
+> `export PATH="$HOME/.local/bin:$PATH"` in `~/.zshrc`, or run
+> `~/.local/bin/max` directly. The wrapper finds Modular's `max` on `PATH`
+> for the model server automatically; if it can't, point
+> `MAXCLI=/path/to/modular-max` at it.
 
 ---
 
