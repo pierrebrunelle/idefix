@@ -20,9 +20,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modular
-      - name: Install patchelf (linux rpath fixup)
+      - name: Install patchelf + libcurl-dev (linux)
         if: matrix.os == 'ubuntu-22.04'
-        run: sudo apt-get install -y patchelf
+        # -lcurl needs the dev package: runner has the runtime lib only.
+        run: sudo apt-get install -y patchelf libcurl4-openssl-dev
       - name: Build
         # MOJO=mojo uses the pip console-script wrapper: it exports the
         # MODULAR_* env vars the raw bin/mojo needs to locate std +
