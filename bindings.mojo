@@ -672,6 +672,11 @@ def run_capture(
         # leave it behind or block on it.
         _ = external_call["kill", c_int](c_int(-pid), c_int(SIGKILL))
         _ = external_call["waitpid", c_int](pid, Pointer(to=status), c_int(0))
+    elif not timed_out:
+        # Direct child exited but detached grandchildren (e.g. `(x &)`)
+        # still hold its process group; setsid'd processes left the group
+        # by choice and are the only sanctioned way to outlive a command.
+        _ = external_call["kill", c_int](c_int(-pid), c_int(SIGKILL))
     _ = external_call["shim_track_pgid", c_int](c_int(0))
     var wst = Int(status)
     var code = (wst >> 8) & 0xFF

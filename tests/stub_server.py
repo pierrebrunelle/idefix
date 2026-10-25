@@ -5,7 +5,7 @@ Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | medit | ediff
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
-       | flood | many | markup | think | finalans | stall
+       | flood | many | markup | think | finalans | stall | detach
 """
 import json
 import os
@@ -242,6 +242,11 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif MODE == "finalans":
                 resp = msg_response(content="Done.")
+            elif MODE == "detach":
+                resp = msg_response(
+                    calls=[tool_call("call_d", "(sleep 29 &); exit 0")],
+                    finish="tool_calls",
+                )
             elif MODE == "medit":
                 resp = msg_response(
                     calls=[tool_call(

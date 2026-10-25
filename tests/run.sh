@@ -202,7 +202,13 @@ echo "$out" | grep -q "^max 0" && echo "PASS version" || { echo "FAIL version: $
 ./max edit </dev/null >/dev/null 2>&1; rc=$?
 check "bare edit exit" 64 "$rc"
 
-# 13q. with-max.sh: server already answering -> runs task, never serves
+# 13q. detach: (cmd &) strays in the child pgroup die with the command
+out=$(run_mode detach ./max --repo . "task" 2>/dev/null); rc=$?
+check "detach exit" 0 "$rc"
+sleep 1
+! pgrep -f "sleep 29" >/dev/null && echo "PASS detach orphan killed" || { echo "FAIL detach orphan killed"; pgrep -fl "sleep 29"; pkill -f "sleep 29"; FAIL=1; }
+
+# 13r. with-max.sh: server already answering -> runs task, never serves
 out=$(run_mode normal env MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
 check "with-max exit" 0 "$rc"
 check "with-max answer" "Done." "$out"
