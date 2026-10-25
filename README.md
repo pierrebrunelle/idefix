@@ -34,31 +34,15 @@ idefix "fix the parser bug and re-run the tests"
 
 A bare Python loop already covers most trivial tasks. `idefix` is that loop plus the verified hardening a real repo deserves — bounded requests, honest tool results, journaling, sandbox, process cleanup — and nothing else. Features ship when they move a benchmark number, not when they sound useful.
 
-```text
-USER  "fix the parser bug"   (one-shot | REPL | piped session)
-  |
-  v
-HARNESS  idefix ~1.5k LOC -> 300KB native binary
-  |  POST /v1/chat/completions  (+ tools[])
-  v
-SERVER  max serve - ollama - LM Studio - llama-server - vLLM
-  |  message.tool_calls[bash(command)]
-  v
-MODEL   Qwen3-1.7B..14B — the intelligence; the harness only feeds it
+Picking an agent, honestly:
 
-EXECUTION  (inside idefix)
-  tool_call -> fork+exec /bin/bash -c "cmd"
-     ├─ process group; killpg on timeout/deadline
-     ├─ env scrub: KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL
-     ├─ PATH gains `idefix edit`  (exact-match edits fail loud)
-     └─ --sandbox: seatbelt, writes = repo + tmp only
-            v
-     filesystem (the repo)
-        pre:  md5 snapshot + APFS clonefile
-        post: changed_files + compact diff + no-op warning
-            v
-     tool result -> next model turn   (journal replays the session)
-```
+| You want | Use |
+|---|---|
+| A polished TUI with providers, plugins, MCP | pi, aider, claude-code |
+| A big framework to build your own agent | LangGraph, NeMo, Mastra |
+| The smallest auditable loop for local models | **idefix** |
+
+The full loop diagram lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## How
 
