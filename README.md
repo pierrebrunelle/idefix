@@ -2,54 +2,57 @@
 
 # idefix
 
-**A minimal, local-first coding agent written in Mojo.**
+**A tiny native coding agent for local models. One tool: `bash`. One loop.**
 
-`idefix` is a single **~300 KB native binary** that takes a task, talks to a local LLM over Modular MAX's OpenAI-compatible API, executes the model's `bash(command)` calls inside a target repository, and prints the answer. 
-
-- **Zero Python at runtime**
-- **No dependencies beyond `libcurl`**
-- **~16 MB peak RSS** (vs. ~250 MB for Python-based harnesses)
+```bash
+git clone https://github.com/pierrebrunelle/idefix.git
+cd idefix && ./install.sh
+idefix "fix the parser bug and re-run the tests"
+```
 
 ---
 
-## Philosophy
+## What
 
-> **Agent capability = Model × Harness.**  
+`idefix` is a **~300 KB Mojo binary** that takes a task, talks to a local LLM over an OpenAI-compatible endpoint, runs the model's `bash(command)` calls inside your repo, and prints the answer. One file of agent code you can read in an hour.
+
+- Zero Python at runtime, no dependencies beyond `libcurl`
+- ~16 MB peak RSS (vs ~250 MB for Python harnesses)
+- Works with `max serve` (Modular), Ollama, LM Studio, llama-server, vLLM — anything that speaks `/v1/chat/completions`
+
+## Who it's for
+
+- **You run local models** — Qwen3, Llama, anything on Ollama/MAX/LM Studio — and want a coding agent that treats them as the target, not a config hack.
+- **You measure harness vs model.** `capability = model × harness`; a trustworthy measurement needs a harness you can actually read. This is one.
+- **You want the smallest thing that works.** One loop, one tool, ~1.5k lines of agent logic, every bound enforced and tested.
+
+**Not for you if** you want a TUI, MCP, hosted cloud providers, plugins, or sub-agents — that's [pi](https://github.com/earendil-works/pi), aider, or claude-code, and they're good.
+
+## Why
+
+> Agent capability = model × harness.
 > The harness half should be small enough to hold in your head.
 
-`idefix` exists to find the smallest execution loop that reliably closes coding tasks unattended. Every line of harness code has to earn its keep: **features ship when they move a benchmark number, not when they sound useful.**
-
-## Where it sits
+A bare Python loop already covers most trivial tasks. `idefix` is that loop plus the verified hardening a real repo deserves — bounded requests, honest tool results, journaling, sandbox, process cleanup — and nothing else. Features ship when they move a benchmark number, not when they sound useful.
 
 ```text
-FRAMEWORKS  Mastra - NeMo OO-Agents - LangGraph
-            build-your-own-agent kits; a different layer, not competitors.
-            idefix deliberately uses no framework.
-
 USER  "fix the parser bug"   (one-shot | REPL | piped session)
   |
   v
-HARNESS  (ready-to-run agent loops)
-  opencode ~1.05M LOC - dsh ~569k - codex ~420k+ - pi ~100k
-  aider ~22k + ~100 deps     idefix ~1.5k LOC -> 300KB native binary
-  a bare Python loop covers ~90% of trivial tasks; idefix is that loop
-  plus the verified hardening (bounds, honest results, journal, sandbox)
+HARNESS  idefix ~1.5k LOC -> 300KB native binary
   |  POST /v1/chat/completions  (+ tools[])
   v
-INFERENCE SERVER  (separate OS process; idefix never manages it)
-  Modular `max serve` - verified: KV prefix cache reuse
-  ollama              - verified: qwen3:4b drove real tasks
-  LM Studio - llama-server - vLLM  (OpenAI-compatible contract)
+SERVER  max serve - ollama - LM Studio - llama-server - vLLM
   |  message.tool_calls[bash(command)]
   v
-MODEL  Qwen3-1.7B..14B  - the intelligence; the harness only feeds it
+MODEL   Qwen3-1.7B..14B — the intelligence; the harness only feeds it
 
 EXECUTION  (inside idefix)
   tool_call -> fork+exec /bin/bash -c "cmd"
      ├─ process group; killpg on timeout/deadline
      ├─ env scrub: KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL
      ├─ PATH gains `idefix edit`  (exact-match edits fail loud)
-     └─ --sandbox (opt-in): seatbelt, writes = repo + tmp only
+     └─ --sandbox: seatbelt, writes = repo + tmp only
             v
      filesystem (the repo)
         pre:  md5 snapshot + APFS clonefile
@@ -58,33 +61,25 @@ EXECUTION  (inside idefix)
      tool result -> next model turn   (journal replays the session)
 ```
 
----
+## How
 
-## Quickstart
-
-Three steps, copy-paste:
+Three steps:
 
 ```bash
-# 1. Install the Modular tools once (gives you mojo + the `max` model server)
+# 1. Get a model server once (Modular's CLI doubles as ours)
 pip install modular        # or: pipx install modular
 
-# 2. Build and install the agent (puts `idefix` on your PATH)
+# 2. Install the agent
 git clone https://github.com/pierrebrunelle/idefix.git
 cd idefix && ./install.sh
-idefix --version   # should print "idefix 0.x"
+idefix --version           # -> "idefix 0.x"
 
-# 3. Use it - from inside any project folder
+# 3. Use it, from inside any project
 cd my-project
 idefix "the slugify test fails on unicode input - fix it and re-run the tests"
 ```
 
-That's it. The first `idefix` run boots a local model server in the background
-(`Qwen/Qwen3-1.7B` by default - about 2 GB of RAM), runs your task, and shuts
-the server down when it finishes. Pick a different model with
-`MAX_MODEL=<org/name>`.
-
-Already running an OpenAI-compatible server (Modular `max serve`, ollama,
-LM Studio)? Point `idefix` at it and it will use it instead of booting one:
+The first run lazily boots a local server (`Qwen/Qwen3-1.7B`, ~2 GB RAM), runs your task, and shuts it down. Already running one? Point at it and it gets used instead:
 
 ```bash
 export MAX_BASE_URL=http://127.0.0.1:11434/v1   # e.g. ollama
@@ -92,10 +87,8 @@ export MAX_MODEL=qwen3:4b
 idefix "fix the parser bug and run its tests"
 ```
 
-### Example Run
-
 ```text
-\98/idefix --repo . "test_slugify fails on 'Creme Brulee'; fix it"
+$ idefix --repo . "test_slugify fails on 'Creme Brulee'; fix it"
 [model] Reading slugify and its test.
 [model] lower() runs before the accent strip. Patching.
 [model] Tests pass.
@@ -103,90 +96,57 @@ idefix "fix the parser bug and run its tests"
 Fixed: normalize accents before lowercasing in slugify().
 ```
 
-> **Why `idefix`:** the command was renamed so it never collides with
-> Modular's `max` CLI (the model server `pip install modular` puts on PATH).
-> Env vars that configure the *server* keep their `MAX_` names
-> (`MAX_MODEL`, `MAX_BASE_URL`, `MAX_API_KEY`, `MAXCLI`, `MAX_GPU`); the
-> agent's own state-dir override is `IDEFIX_STATE_DIR` (`~/.idefix` by
-> default). The wrapper finds Modular's `max` on `PATH` automatically; if
-> it can't, point `MAXCLI=/path/to/modular-max` at it.
-
----
-
-## Usage
-
-Describe what you want in plain English. `idefix` runs the shell commands required to inspect, patch, and verify the repo:
+More:
 
 ```bash
-cd my-project
-
-# One-shot tasks
-idefix "the slugify test fails on unicode input - fix it and re-run the tests"
-idefix "add a --verbose flag to the cli and update the help text"
-idefix --repo ../other-dir "fix the parser bug"
-
-# Multi-step piped session (lines share context)
-printf 'fix the parser\nadd tests for it\n' | idefix
-
-# Interactive REPL (uses current working directory as repo)
-idefix
+printf 'fix the parser\nadd tests for it\n' | idefix   # piped session
+idefix                                                # interactive REPL
+idefix edit file.py <<'EOF'                           # structured edit
+<<<<<<< SEARCH
+old code
+=======
+new code
+>>>>>>> REPLACE
+EOF
 ```
 
-### Interactive REPL
+> **Naming:** `idefix` was chosen so it never collides with Modular's `max` CLI (the model server `pip install modular` puts on PATH). Server env vars keep their `MAX_` names; the agent's own state-dir override is `IDEFIX_STATE_DIR` (`~/.idefix`).
 
-```text
-idefix> tests fail on empty input, fix it
-idefix> !python3 test_kit.py       # run a shell command directly; 0 tokens spent
-idefix> /reset                     # clear conversation context and start fresh
-idefix> /quit                      # exit (or Ctrl-D)
-```
+## Where it runs
 
-If `AGENTS.md` or `CLAUDE.md` is present in the repository root, `idefix` automatically loads it into the system prompt. Run `idefix --help` for the full list of flags and environment variables.
+- **OS:** macOS (arm64) and Linux (x86_64) — `make` builds `./idefix`, `make bundle` ships binary + dylibs + wrapper.
+- **Model server:** any OpenAI-compatible endpoint (`MAX_BASE_URL`, `MAX_MODEL`, `MAX_API_KEY`). The wrapper boots Modular `max serve` on demand if nothing is answering.
+- **Repo:** any directory via `--repo`; the REPL uses your cwd. `AGENTS.md` / `CLAUDE.md` at the root is loaded automatically.
 
-Hacking on `idefix` itself: `make` builds `./idefix` in the repo root, and `scripts/with-max.sh` is the same lazy-serve wrapper that `./install.sh` installs, pointed at the repo build.
+## When to use it (and when not)
 
----
+**Use it for:**
 
-## Unattended Runs & Guardrails
+- One-shot and unattended runs — `--bare` strips guardrails for protocol parity, `--sandbox` confines writes, `--continue`/`--resume` replay or resume sessions.
+- Measuring what a *model* can do — `--bare` is byte-parity with the reference client in `pierrebrunelle/max-results`.
+- Small-model tasks where a 250 MB Python harness is overhead and a 1k-line audit target is the point.
 
-`idefix` is built to run unattended loops without runaway context or silent hangs:
-
-- **Journaling & Resume:** Replay or continue interrupted sessions via `--continue` or `--resume FILE`, with live progress written to a `status` file.
-- **Context Compaction:** Automatically compacts older tool output instead of crashing at the context window limit.
-- **Strict Local Bounds:** Enforces hard caps on request count, wall-clock time, per-command timeout, stdout/stderr output size, and per-request prompt size.
-- **Loop & No-Op Detection:** A loop guard halts repeated identical commands. Tool results track `changed_files`, and write-shaped commands that leave the working tree untouched emit an explicit warning to the model.
-- **Structured Edits (`idefix edit`):** `idefix` is on `PATH` inside model-issued commands, so the model can run `idefix edit FILE <<'EOF'` with `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks. The search text must match exactly once or the file is left untouched; a `.py` result that fails `py_compile` is rejected with the compiler's error.
-- **Edit Feedback:** When a command changes files, the tool result includes a compact unified diff of what actually changed.
-- **Transport Resilience:** Automatic retries across transient local server/transport errors, plus `--notify CMD` hooks on completion.
-- **macOS Seatbelt Sandboxing (`--sandbox`):** Confines model-issued commands to the target repository and `/tmp`.
-- **Protocol Parity Mode (`--bare`):** Disables all harness guardrails for strict protocol parity with the reference benchmark client (`bench/ref_client.py` in `pierrebrunelle/max-results`).
-
----
+**Don't reach for it when** you want polish over auditability: no TUI, no MCP, no remote cloud providers, no sub-agents. That's a feature — read `pi` or `aider` instead.
 
 ## Benchmarks
 
-Every benchmark row is verified by the task's independent test script—never by the model's self-report (full methodology, tasks, and reproduction harness in `pierrebrunelle/max-results`).
+Every row is verified by the task's independent test script — never by the model's self-report (methodology in `pierrebrunelle/max-results`).
 
 ### 6-Task Suite (`Qwen3-4B`, 2 reps)
 
 | Harness | Pass Rate | Peak RSS | Runtime Stack |
 | :--- | :---: | :---: | :--- |
 | `aider` | 100% | ~250 MB | Python |
-| **`idefix --bare`** | **75%** | **~16 MB** | **Mojo (native binary)** |
+| **`idefix --bare`** | **75%** | **~16 MB** | **Mojo (native)** |
 | `pi` | 58% | — | — |
 
-### Failure Analysis: `long-horizon` (6 bugs across 3 files, `Qwen3-14B`)
-- **Result:** `aider` and `pi` pass; `idefix` went `0/4`.
-- **Diagnosis:** Free-form `bash` allowed the model to think an edit landed when it hadn't, whereas `aider`'s structured diff format fails loudly on malformed patches.
-- **Harness Fix:** Tool results now explicitly return `changed_files`, and write-shaped commands that modify zero files return an explicit `warning` to the model. The remaining gap on this task is model capability (`snake_to_camel` was rewritten two dozen ways, all wrong).
-
----
+**Failure analysis** (`long-horizon`, `Qwen3-14B`): `aider` and `pi` pass, `idefix` went 0/4 — free-form `bash` let the model *think* an edit landed when it hadn't. The fix shipped in the harness: `changed_files` in every tool result, an explicit warning on no-op writes, and `idefix edit` for loud-failing structured edits. The remaining gap is model capability.
 
 ## Scope & Limits
 
-- **Single loop, single tool:** One task loop and one `bash(command)` tool.
-- **Execution permissions:** Unless `--sandbox` (macOS seatbelt) is passed, commands execute with your user permissions inside the repo path. Use an isolated checkout or container when running untrusted tasks.
-- **Credential scrubbing:** Environment variables matching `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, or `CREDENTIAL` are automatically stripped from model-issued subshells.
-- **Deliberate non-goals:** No token streaming, no remote cloud API providers, no MCP, and no subagents. The model server is a separate OS process that the binary never manages directly.
+- One loop, one tool (`bash`), one file of agent logic.
+- Commands run with your user permissions inside the repo path unless `--sandbox` is passed. Use an isolated checkout for untrusted tasks.
+- Credential env vars (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`) are scrubbed from model-issued subshells.
+- Non-goals on purpose: no streaming, no cloud providers, no MCP, no sub-agents. The model server is a separate OS process the binary never manages.
 
-If you want a polished pair-programming UI, cross-platform container sandboxing, or hosted cloud APIs, use **aider** or **pi**. `idefix` is a laboratory for measuring how small the agent loop can get.
+If you want a polished pair-programming UI or hosted APIs, use aider or pi. `idefix` is a laboratory for measuring how small the agent loop can get.
