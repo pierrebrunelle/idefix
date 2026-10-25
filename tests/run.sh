@@ -137,7 +137,25 @@ check "ediff exit" 0 "$rc"
 grep -q '"diff"' /tmp/stub_ediff.log && grep -q "+a" /tmp/stub_ediff.log && echo "PASS diff echo" || { echo "FAIL diff echo"; cat /tmp/stub_ediff.log; FAIL=1; }
 rm -f d.txt
 
-# 13f. with-max.sh: server already answering -> runs task, never serves
+# 13f. redirnoop: 2>&1 is fd duplication, not a file write -> no warning
+out=$(run_mode redirnoop ./max --repo . "task" 2>/dev/null); rc=$?
+check "redirnoop exit" 0 "$rc"
+grep -q "may not have applied" /tmp/stub_redirnoop.log && { echo "FAIL redir false warning"; cat /tmp/stub_redirnoop.log; FAIL=1; } || echo "PASS no redir warning"
+
+# 13g. injname: model-created filename reaching the diff echo must not execute
+rm -f pwned.txt 'x$(touch pwned.txt)'
+out=$(run_mode injname ./max --repo . "task" 2>/dev/null); rc=$?
+check "injname exit" 0 "$rc"
+[ -f pwned.txt ] && { echo "FAIL filename injection"; FAIL=1; } || echo "PASS filename quoting"
+rm -f 'x$(touch pwned.txt)'
+
+# 13h. badmarkup: unparseable tool_call markup -> nudge + retry, then Done.
+out=$(run_mode badmarkup ./max --repo . --max-requests 5 "task" 2>/dev/null); rc=$?
+check "badmarkup exit" 0 "$rc"
+check "badmarkup recovered" "Done." "$out"
+grep -q "could not be parsed" /tmp/stub_badmarkup.log && echo "PASS badmarkup nudge" || { echo "FAIL badmarkup nudge"; cat /tmp/stub_badmarkup.log; FAIL=1; }
+
+# 13i. with-max.sh: server already answering -> runs task, never serves
 out=$(run_mode normal env MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
 check "with-max exit" 0 "$rc"
 check "with-max answer" "Done." "$out"

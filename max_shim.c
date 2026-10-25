@@ -1,4 +1,5 @@
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,3 +99,23 @@ char **shim_scrubbed_env(void) {
     out[j] = NULL;
     return out;
 }
+
+/* Writes the running executable's path into buf (NUL-terminated).
+   _NSGetExecutablePath is Darwin-only; /proc/self/exe is the Linux
+   equivalent. Returns 0 on success. */
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+int max_self_exe(char *buf, size_t size) {
+    uint32_t n = (uint32_t)size;
+    return _NSGetExecutablePath(buf, &n);
+}
+#elif defined(__linux__)
+int max_self_exe(char *buf, size_t size) {
+    ssize_t n = readlink("/proc/self/exe", buf, size - 1);
+    if (n <= 0) return -1;
+    buf[n] = '\0';
+    return 0;
+}
+#else
+int max_self_exe(char *buf, size_t size) { (void)buf; (void)size; return -1; }
+#endif

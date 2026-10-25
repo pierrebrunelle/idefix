@@ -499,20 +499,23 @@ def c_argv(mut args: List[String]) raises -> raw_ptr:
 
 
 def self_dir() -> String:
+    # max_self_exe wraps _NSGetExecutablePath (Darwin) / /proc/self/exe
+    # (Linux); calling the Darwin symbol directly would not link on Linux
     var buf = external_call["calloc", raw_ptr](c_size_t(4096), c_size_t(1))
     if not buf:
         return ""
-    var sz = external_call["calloc", raw_ptr](c_size_t(4), c_size_t(1))
     var out = String("")
-    sz.value().unsafe_bitcast[UInt32]()[0] = 4096
-    if external_call["_NSGetExecutablePath", c_int](buf.value(), sz.value()) == 0:
+    if external_call["max_self_exe", c_int](buf.value(), c_size_t(4096)) == 0:
         var p = String(unsafe_from_utf8_ptr=buf.value().unsafe_bitcast[UInt8]())
         var sl = p.rfind("/")
         if sl > 0:
             out = String(p[byte= : sl])
     _ = external_call["free", c_int](buf.value())
-    _ = external_call["free", c_int](sz.value())
     return out
+
+
+def file_exists(var path: String) -> Bool:
+    return external_call["access", c_int](path.as_c_string_span().ptr(), c_int(0)) == 0
 
 
 def run_capture(

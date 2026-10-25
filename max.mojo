@@ -242,6 +242,8 @@ def parse_args() raises -> Config:
         # bench-compat mode: every behavior added after the original loop off
         if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox:
             die("--bare disables --continue, --resume, --notify and --sandbox", 64)
+        if cfg.sandbox and not bindings.file_exists("/usr/bin/sandbox-exec"):
+            die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
@@ -304,12 +306,26 @@ def tool_msg(cid: String, content: String) -> String:
 
 def looks_write(cmd: String) -> Bool:
     var marks = List[String](
-        ">", "sed -i", "tee ", "apply_patch", "mv ", "cp ", "rm ",
+        "sed -i", "tee ", "apply_patch", "mv ", "cp ", "rm ",
         "mkdir", "touch", "patch ", "truncate", "dd ",
         __list_literal__=NoneType(),
     )
     for i in range(len(marks)):
         if cmd.find(marks[i]) >= 0:
+            return True
+    # '>' writes a file unless it is an fd duplicate (2>&1, >&2), a
+    # comparison (>=, =>) or an arrow (->); '>' in '>>' still counts
+    var bs = cmd.as_bytes()
+    for i in range(cmd.byte_length()):
+        if Int(bs[i]) != 0x3E:
+            continue
+        var prev = 0x20
+        var nxt = 0x20
+        if i > 0:
+            prev = Int(bs[i - 1])
+        if i + 1 < cmd.byte_length():
+            nxt = Int(bs[i + 1])
+        if prev != 0x26 and prev != 0x2D and prev != 0x3D and nxt != 0x3D and nxt != 0x26:
             return True
     return False
 
@@ -771,12 +787,20 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                             + bindings.json_quote(cf)
                                         )
                                         if cf != "" and clone_ok:
+                                            # filenames are model-controlled;
+                                            # single-quote every entry or it
+                                            # executes in this shell
+                                            var qf = String("")
+                                            var cfl = cf.split("\n")
+                                            for fi in range(len(cfl)):
+                                                var fname = String(cfl[fi])
+                                                if fname != "":
+                                                    qf += "'" + fname.replace("'", "'\\''") + "' "
                                             var d2 = (
-                                                "for f in " + cf.replace("\n", " ")
-                                                + '; do diff -u "' + tree + '/$f" "$f"'
-                                                + " 2>/dev/null || diff -u /dev/null \"$f\""
+                                                "for f in " + qf
+                                                + "; do diff -u -- \"" + tree + "/$f\" \"$f\""
+                                                + " 2>/dev/null || diff -u -- /dev/null \"$f\""
                                                 + " 2>/dev/null; done | head -120"
-                                                + "; rm -rf " + tree
                                             )
                                             var dr = bindings.run_capture(
                                                 d2, cfg.repo, 8192, 15000, False
@@ -794,6 +818,14 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                                 ',"warning":"exit 0 but no files'
                                                 + ' changed; the edit may not have applied"'
                                             )
+                                    # tree/marks are per-command temp state;
+                                    # clean up even when the diff loop did not run
+                                    var cl = "rm -f '" + mark + "' '" + mark + ".after'"
+                                    if clone_ok:
+                                        cl += "; rm -rf '" + tree + "'"
+                                    _ = bindings.run_capture(
+                                        cl, cfg.repo, 64, 30000, False
+                                    )
                                 result += "}"
                         bindings.cjson_del(aj)
                 push_msg(cfg, history, tool_msg(cid, result))
@@ -811,6 +843,18 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 exit_code = 2
                 break
         else:
+            if content.find("<tool_call") >= 0:
+                # the server returned markup it could not structure; the
+                # model meant to call a tool, so re-ask instead of finishing
+                bindings.eprint("[max] unparseable <tool_call> in reply; re-asking")
+                push_msg(
+                    cfg, history,
+                    '{"role":"user","content":"Your reply contained a <tool_call> tag that could not be parsed. Re-issue it as a proper tool call, or answer without it."}',
+                )
+                if msg_owner:
+                    bindings.cjson_del(msg_owner)
+                bindings.cjson_del(root)
+                continue
             final = content
             bindings.cjson_del(root)
             exit_code = 0

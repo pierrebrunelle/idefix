@@ -4,7 +4,7 @@
 Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | medit | ediff
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
-       | chunked | envdump | cfdiff
+       | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
 """
 import json
 import os
@@ -118,6 +118,19 @@ class Handler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
             return
+        if MODE == "badmarkup" and n_tool == 0 and not STATE["fired"]:
+            # tool-call markup the server failed to structure: agent should
+            # re-ask rather than finish. Fires once, then default flow.
+            STATE["fired"] = True
+            reply(
+                self,
+                200,
+                msg_response(
+                    content='Let me fix it.\n<tool_call>{"name":"bash",'
+                    '"arguments":{"command":"echo never-ran"}'
+                ),
+            )
+            return
         if MODE == "malformed" and n_tool == 0:
             data = b'{"id":"r","choices":[{invalid json'
             self.send_response(200)
@@ -181,6 +194,19 @@ class Handler(BaseHTTPRequestHandler):
             elif MODE == "cfdiff":
                 resp = msg_response(
                     calls=[tool_call("call_c", "echo cf > cf-out.txt")],
+                    finish="tool_calls",
+                )
+            elif MODE == "injname":
+                # single quotes make the filename literal; if the diff-echo
+                # interpolates it unquoted, touch pwned.txt executes
+                resp = msg_response(
+                    calls=[tool_call("call_i", "touch './x$(touch pwned.txt)'")],
+                    finish="tool_calls",
+                )
+            elif MODE == "redirnoop":
+                # 2>&1 is fd duplication, not a file write: must not warn
+                resp = msg_response(
+                    calls=[tool_call("call_r", "echo hi 2>&1 | tail -1")],
                     finish="tool_calls",
                 )
             elif MODE == "medit":
