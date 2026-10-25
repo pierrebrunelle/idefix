@@ -318,10 +318,11 @@ echo "$out" | grep -q "exceeds --max-http-bytes" && echo "PASS chunked cap msg" 
 
 # 36. env scrub: model commands see no credential-named vars, others pass through
 rm -f /tmp/stub_envdump.log
-out=$(run_mode envdump env MAX_API_KEY=sekrit-xy KEEP_ME_PLAIN=visible ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible ./max --repo . "task" 2>/dev/null); rc=$?
 check "envdump exit" 0 "$rc"
 grep -q "KEEP_ME_PLAIN=visible" /tmp/stub_envdump.log && echo "PASS env plain kept" || { echo "FAIL env plain kept"; cat /tmp/stub_envdump.log; FAIL=1; }
 grep -q "sekrit-xy\|MAX_API_KEY" /tmp/stub_envdump.log && { echo "FAIL env leaked credential"; FAIL=1; } || echo "PASS env scrubbed"
+grep -q "sk-lower\|api_key" /tmp/stub_envdump.log && { echo "FAIL env leaked lowercase credential"; FAIL=1; } || echo "PASS env scrubbed lowercase"
 
 # 37. changed_files: tool result lists files the command actually changed
 rm -f /tmp/max_cf.json /tmp/max_cf_bare.json cf-out.txt

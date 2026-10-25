@@ -518,6 +518,10 @@ def file_exists(var path: String) -> Bool:
     return external_call["access", c_int](path.as_c_string_span().ptr(), c_int(0)) == 0
 
 
+def pid() -> Int:
+    return Int(external_call["getpid", c_int]())
+
+
 def run_capture(
     command: String,
     cwd: String,

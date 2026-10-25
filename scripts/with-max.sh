@@ -19,6 +19,11 @@ if [ ! -f "$ROOT/max" ] || [ "$ROOT/max" -ef "$SELF" ]; then
     ROOT="$(cd "$ROOT/.." && pwd)"
 fi
 
+# subcommands that never need a model server go straight to the binary
+case "${1:-}" in
+    edit|-h|--help|--version) exec "$ROOT/max" "$@" ;;
+esac
+
 # The model-server CLI defaults to `max` (Modular's). If this script is
 # itself on PATH as `max` (any name, via symlink or not), skip candidates
 # that resolve to it: -ef compares files, not strings.
@@ -81,6 +86,9 @@ if [ ! -f "$ROOT/max" ] || [ ! -x "$ROOT/max" ]; then
     echo "with-max: no runnable max binary at $ROOT/max" >&2
     exit 1
 fi
+# linux bundles rely on this when patchelf was unavailable at build time;
+# on macOS the binary already carries @executable_path
+export LD_LIBRARY_PATH="$ROOT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 "$ROOT/max" "$@"
 rc=$?
 # Plain exit so the EXIT trap fires: kill the server we started, drop its log.

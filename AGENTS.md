@@ -36,3 +36,15 @@ enough to hold in your head.
 `make` builds (needs `mojo` on PATH or `MOJO=/path/to/mojo`).
 `bash tests/run.sh` runs the stub-server suite; report the PASS/FAIL
 count. The suite is the contract — new behavior ships with a check.
+
+- Tests bind port 18923. Kill strays before diagnosing mass failures:
+  `lsof -ti:18923 | xargs kill -9`.
+- FFI traps (dangling `as_c_string_span`, calloc out-params, in/out
+  bufsize) are documented in `.devin/skills/mojo-c-ffi/SKILL.md`. Read
+  it before touching `external_call` marshalling.
+- Commit with `git commit -F msgfile`, not `-m "$(cat <<'EOF' ...)"`:
+  an apostrophe in the message breaks the nested quoting.
+- Under `make`, `command -v` resolves absolute tool paths; `which`
+  does not.
+- A `mojo build` binary is not portable: it links `@rpath` Mojo
+  dylibs. Ship `make bundle` output (binary + dylibs + with-max).

@@ -20,10 +20,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install modular
+      - name: Install patchelf (linux rpath fixup)
+        if: matrix.os == 'ubuntu-22.04'
+        run: sudo apt-get install -y patchelf
       - name: Build
         run: make bundle MOJO="$(python -c 'import modular, os; print(os.path.join(os.path.dirname(modular.__file__), "bin", "mojo"))')"
       - name: Test (linux/macos smoke)
-        run: ./bundle/max --help | grep -q max
+        run: ./bundle/max --help | grep -q max && echo "/quit" | ./bundle/max --repo . --bare
       - name: Package bundle (binary + runtime dylibs)
         run: tar -czf "${{ matrix.artifact }}.tar.gz" -C bundle .
       - uses: actions/upload-artifact@v4

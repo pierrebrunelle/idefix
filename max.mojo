@@ -242,11 +242,19 @@ def parse_args() raises -> Config:
         # bench-compat mode: every behavior added after the original loop off
         if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox:
             die("--bare disables --continue, --resume, --notify and --sandbox", 64)
-        if cfg.sandbox and not bindings.file_exists("/usr/bin/sandbox-exec"):
-            die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
+    if cfg.sandbox:
+        if not bindings.file_exists("/usr/bin/sandbox-exec"):
+            die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
+        # '"' and '\' break out of quoted SBPL subpath args
+        var stmp = getenv("TMPDIR")
+        if (
+            cfg.repo.find('"') >= 0 or cfg.repo.find("\\") >= 0
+            or stmp.find('"') >= 0 or stmp.find("\\") >= 0
+        ):
+            die("--sandbox: repo path and TMPDIR must not contain '\"' or '\\'", 64)
     if cfg.state_root == "":
         cfg.state_root = getenv("MAX_STATE_DIR")
     if cfg.state_root == "":
@@ -502,6 +510,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var deadline = bindings.now_seconds() + cfg.max_seconds
     var exit_code = 0
     var final = ""
+    # per-turn budget: the REPL shares st across turns
+    st.requests = 0
     while st.requests < cfg.max_requests:
         if bindings.now_seconds() > deadline:
             bindings.eprint("[max] --max-seconds exceeded")
@@ -690,9 +700,9 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 if not cfg.bare:
                                     # hash snapshot so "rewritten" and "changed" are
                                     # different answers; sed -i exits 0 on a no-match
-                                    mark = cfg.session_dir + "/cmdmark"
+                                    mark = cfg.session_dir + "/cmdmark-" + String(bindings.pid())
                                     if cfg.session_dir == "":
-                                        mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000))
+                                        mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                     var hw = bindings.run_capture(
                                         "command -v md5sum >/dev/null"
                                         + " && echo md5sum || echo 'md5 -r'",
@@ -705,13 +715,17 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         snap += "-path './" + String(
                                             cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
                                         ) + "' -prune -o "
+                                    # files >=50M skip hashing; a size line keeps
+                                    # them visible to changed_files (+48M overlaps
+                                    # the boundary so nothing falls between)
                                     snap += (
                                         "-name .git -prune -o -name .max-state -prune -o "
-                                        + "-type f -size -50M -exec " + hasher
-                                        + " {} + 2>/dev/null | sort > " + mark
+                                        + "-type f \\( -size -50M -exec " + hasher
+                                        + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
+                                        + " 2>/dev/null | sort > " + mark
                                     )
                                     _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
-                                    tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000))
+                                    tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                     var cr = bindings.run_capture(
                                         "rm -rf " + tree + "; cp -Rc . " + tree,
                                         cfg.repo, 64, 60000, False,
@@ -770,8 +784,9 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         ) + "' -prune -o "
                                     dcmd += (
                                         "-name .git -prune -o -name .max-state -prune -o "
-                                        + "-type f -size -50M -exec " + hasher
-                                        + " {} + 2>/dev/null"
+                                        + "-type f \\( -size -50M -exec " + hasher
+                                        + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
+                                        + " 2>/dev/null"
                                         + " | sort > " + mark + ".after; "
                                         + "{ comm -13 " + mark + " " + mark + ".after; "
                                         + "comm -23 " + mark + " " + mark + ".after; }"
@@ -1010,10 +1025,15 @@ def run_edit(path: String) raises -> Int:
         if has_py[1] == 0 and String(has_py[0].strip()) != "":
             var tmp = path + ".maxedit-tmp"
             _ = bindings.write_file(tmp, text)
+            var qtmp = "'" + tmp.replace("'", "'\\''") + "'"
+            # compile() parses in memory; py_compile would litter __pycache__
             var chk = bindings.run_capture(
-                "python3 -m py_compile " + tmp, ".", 4096, 15000, False
+                "python3 -c 'import sys;"
+                + "compile(open(sys.argv[1]).read(),sys.argv[1],\"exec\")' "
+                + qtmp,
+                ".", 4096, 15000, False,
             )
-            _ = bindings.run_capture("rm -f " + tmp, ".", 64, 5000, False)
+            _ = bindings.run_capture("rm -f " + qtmp, ".", 64, 5000, False)
             if chk[1] != 0:
                 bindings.eprint("max edit: result does not compile:\n" + chk[0].strip())
                 return 1
