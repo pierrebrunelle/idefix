@@ -129,6 +129,17 @@ check "nogate exit" 0 "$rc"
 check "nogate no re-ask" 1 "$(grep -c 'STUB pairing' /tmp/stub_writefinal.log)"
 rm -f gate-wrote.txt
 
+# 13digest. --loop-digest: identical outcomes from varying commands get a
+# result-kind loop_warning; off by default
+out=$(run_mode resultloop ./idefix --repo . --max-requests 8 --loop-digest "task" 2>/dev/null); rc=$?
+check "digest exit" 2 "$rc"
+grep -q "same outcome" /tmp/stub_resultloop.log && echo "PASS digest warning" || { echo "FAIL digest warning"; cat /tmp/stub_resultloop.log; FAIL=1; }
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"kind":"result"' {} \; 2>/dev/null | grep -q . && echo "PASS digest journal" || { echo "FAIL digest journal"; FAIL=1; }
+
+out=$(run_mode resultloop ./idefix --repo . --max-requests 8 "task" 2>/dev/null); rc=$?
+check "digest off exit" 2 "$rc"
+grep -q "same outcome" /tmp/stub_resultloop.log && { echo "FAIL digest off"; FAIL=1; } || echo "PASS digest off"
+
 # 13b. wall deadline stops a runaway loop and clamps command timeout
 start=$(python3 -c 'import time;print(time.time())')
 out=$(run_mode loop ./idefix --repo . --max-seconds 1 --no-loop-guard "task" 2>/dev/null); rc=$?

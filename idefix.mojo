@@ -53,6 +53,7 @@ struct Config(Copyable):
     var loop_guard: Bool
     var done_gate: Bool
     var doom_warn: Bool
+    var loop_digest: Bool
     var notify: String
     var state_root: String
     var session_dir: String
@@ -87,6 +88,7 @@ struct Config(Copyable):
         self.loop_guard = True
         self.done_gate = False
         self.doom_warn = False
+        self.loop_digest = False
         self.notify = ""
         self.state_root = ""
         self.session_dir = ""
@@ -99,7 +101,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --done-gate --doom-warn --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --done-gate --doom-warn --loop-digest --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -218,6 +220,8 @@ def parse_args() raises -> Config:
             cfg.done_gate = True
         elif arg == "--doom-warn":
             cfg.doom_warn = True
+        elif arg == "--loop-digest":
+            cfg.loop_digest = True
         elif arg == "--continue":
             cfg.cont = True
         elif arg == "--bare":
@@ -297,6 +301,7 @@ def parse_args() raises -> Config:
         cfg.loop_guard = False
         cfg.done_gate = False
         cfg.doom_warn = False
+        cfg.loop_digest = False
     if cfg.sandbox:
         if not bindings.file_exists("/usr/bin/sandbox-exec"):
             die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
@@ -569,6 +574,9 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var final = ""
     var doom_armed = False
     var gate_fired = False
+    # outcome digests across the whole turn: catches A-B-A-B loops where the
+    # command text varies but the result is identical (nemotron jq retry loop)
+    var digests = List[String]()
     # per-turn budget: the REPL shares st across turns
     st.requests = 0
     while st.requests < cfg.max_requests:
@@ -929,6 +937,34 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     _ = bindings.run_capture(
                                         cl, cfg.repo, 64, housekeeping_ms(deadline, 30000), False
                                     )
+                                if cfg.loop_digest:
+                                    # identical outcome regardless of command
+                                    # text: exit code + bounded output prefix
+                                    var dig = (
+                                        String(rc[1]) + "\n"
+                                        + String(rc[0][byte= : min(rc[0].byte_length(), 256)])
+                                    )
+                                    var hits = 0
+                                    for di in range(len(digests)):
+                                        if digests[di] == dig:
+                                            hits += 1
+                                    digests.append(dig)
+                                    if hits >= 3:
+                                        # 4th+ identical outcome this run
+                                        result += (
+                                            ',"loop_warning":"recent commands keep'
+                                            + ' producing the same outcome; if a check'
+                                            + ' already passed, reply with your final'
+                                            + ' answer, otherwise change the approach"'
+                                        )
+                                        journal(
+                                            cfg,
+                                            '{"ev":"loop","ts":'
+                                            + String(bindings.now_seconds())
+                                            + ',"digest":' + bindings.json_quote(dig)
+                                            + ',"count":' + String(hits + 1)
+                                            + ',"kind":"result"}',
+                                        )
                                 result += "}"
                         bindings.cjson_del(aj)
                 push_msg(cfg, history, tool_msg(cid, result))

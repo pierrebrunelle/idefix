@@ -6,6 +6,7 @@ Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | m
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
        | flood | many | markup | think | finalans | stall | detach | writefinal
+       | resultloop
 """
 import json
 import os
@@ -106,6 +107,16 @@ class Handler(BaseHTTPRequestHandler):
                     calls=[tool_call("call_l", "echo same-loop")],
                     finish="tool_calls",
                 ),
+            )
+            return
+        if MODE == "resultloop":
+            # different command text each turn, identical outcome: the
+            # consecutive-repeat guard can't see it, --loop-digest can
+            cmd = "echo R" if n_tool % 2 == 0 else "printf 'R\\n'"
+            reply(
+                self,
+                200,
+                msg_response(calls=[tool_call("call_rl", cmd)], finish="tool_calls"),
             )
             return
         if MODE == "chunked" and n_tool == 0:
