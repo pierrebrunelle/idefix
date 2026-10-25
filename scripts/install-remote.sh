@@ -56,6 +56,12 @@ ln -sf "$DEST/with-max" "$BINDIR/max"
 
 echo "installed: $BINDIR/max (-> $DEST)"
 
+# Linux bundles link libcurl.so.4 dynamically; warn when it is absent.
+if [ "$(uname -s)" = "Linux" ] && command -v ldconfig >/dev/null 2>&1 \
+    && ! ldconfig -p 2>/dev/null | grep -q "libcurl\.so"; then
+    echo "max: warning: libcurl.so.4 not found; install libcurl4 (e.g. apt install libcurl4)" >&2
+fi
+
 # Reachability check: `max` is only usable if it resolves to this symlink.
 resolved="$(command -v max 2>/dev/null || true)"
 if [ "$resolved" != "$BINDIR/max" ]; then

@@ -26,6 +26,7 @@ bundle: max
 	if [ "$$(uname -s)" = "Linux" ]; then ext=so; else ext=dylib; fi ; \
 	for lib in libKGENCompilerRTShared libAsyncRTMojoBindings libMSupportGlobals libAsyncRTRuntimeGlobals ; do \
 		f=$$(find "$$(dirname "$$(dirname "$$(command -v $(MOJO))")")" -name "$$lib.$$ext" | head -1) ; \
+		[ -n "$$f" ] || { echo "make: $$lib.$$ext not found under $$(dirname "$$(dirname "$$(command -v $(MOJO))")")" >&2; exit 1; } ; \
 		cp "$$f" bundle/ ; \
 	done
 	if [ "$$(uname -s)" = "Linux" ]; then \

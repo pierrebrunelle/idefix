@@ -24,9 +24,14 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: sudo apt-get install -y patchelf
       - name: Build
-        run: make bundle MOJO="$(python -c 'import modular, os; print(os.path.join(os.path.dirname(modular.__file__), "bin", "mojo"))')"
+        # MOJO=mojo uses the pip console-script wrapper: it exports the
+        # MODULAR_* env vars the raw bin/mojo needs to locate std +
+        # CompilerRT. (modular is a PEP 420 namespace package; __file__
+        # is None, and raw bin/mojo fails without those vars.)
+        run: make bundle MOJO=mojo
       - name: Test (linux/macos smoke)
-        run: ./bundle/max --help | grep -q max && echo "/quit" | ./bundle/max --repo . --bare
+        # /quit exits before server contact but needs MAX_MODEL set
+        run: ./bundle/max --help | grep -q max && echo "/quit" | MAX_MODEL=smoke/test ./bundle/max --repo . --bare
       - name: Package bundle (binary + runtime dylibs)
         run: tar -czf "${{ matrix.artifact }}.tar.gz" -C bundle .
       - uses: actions/upload-artifact@v4
