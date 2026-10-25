@@ -1,7 +1,6 @@
-max
+idefix
 bundle/
-libmax_c.a
+libidefix_c.a
 *.o
 __pycache__/
 .DS_Store
-

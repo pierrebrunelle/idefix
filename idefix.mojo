@@ -17,7 +17,7 @@ Rules:
 
 
 comptime SYSTEM_SUFFIX = """
-- Prefer `max edit FILE <<'EOF'` with <<<<<<< SEARCH / ======= / >>>>>>> REPLACE blocks for file edits; it fails loudly when the search text does not match.
+- Prefer `idefix edit FILE <<'EOF'` with <<<<<<< SEARCH / ======= / >>>>>>> REPLACE blocks for file edits; it fails loudly when the search text does not match.
 - The host runs macOS/BSD userland: portable commands only (sed -i '' not sed -i; no GNU-only flags). If a command errors, change the command, not the plan.
 - An exit_code of 0 does not prove an edit changed the file (a non-matching sed edits nothing); the result's changed_files field lists what actually changed. Confirm before re-running tests.
 - A reply without a tool call ends the run."""
@@ -93,7 +93,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, IDEFIX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -119,7 +119,7 @@ def read_file(path: String) raises -> String:
 
 
 def die(msg: String, code: Int):
-    bindings.eprint("[max] " + msg)
+    bindings.eprint("[idefix] " + msg)
     external_call["exit", c_int](c_int(code))
 
 
@@ -211,7 +211,7 @@ def parse_args() raises -> Config:
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
         elif arg == "--version":
-            print("max " + VERSION)
+            print("idefix " + VERSION)
             _ = external_call["exit", c_int](c_int(0))
         elif arg == "--":
             i += 1
@@ -260,11 +260,11 @@ def parse_args() raises -> Config:
         ):
             die("--sandbox: repo path and TMPDIR must not contain '\"' or '\\'", 64)
     if cfg.state_root == "":
-        cfg.state_root = getenv("MAX_STATE_DIR")
+        cfg.state_root = getenv("IDEFIX_STATE_DIR")
     if cfg.state_root == "":
         var home = getenv("HOME")
         if home != "":
-            cfg.state_root = home + "/.max"
+            cfg.state_root = home + "/.idefix"
     if not cfg.bare and cfg.state_root != "":
         cfg.session_dir = (
             cfg.state_root + "/sessions/"
@@ -283,7 +283,7 @@ def parse_args() raises -> Config:
 
 def vlog(cfg: Config, s: String):
     if cfg.verbose:
-        bindings.eprint("[max] " + s)
+        bindings.eprint("[idefix] " + s)
 
 
 def write_transcript(path: String, history: String):
@@ -291,7 +291,7 @@ def write_transcript(path: String, history: String):
         return
     var ok = bindings.write_file(path, "[" + history + "]")
     if not ok:
-        bindings.eprint("[max] failed to write transcript: " + path)
+        bindings.eprint("[idefix] failed to write transcript: " + path)
 
 
 def journal(cfg: Config, ev: String):
@@ -529,7 +529,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     st.requests = 0
     while st.requests < cfg.max_requests:
         if bindings.now_seconds() > deadline:
-            bindings.eprint("[max] --max-seconds exceeded")
+            bindings.eprint("[idefix] --max-seconds exceeded")
             exit_code = 2
             break
         var req_ms = (deadline - bindings.now_seconds()) * 1000
@@ -548,7 +548,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 break
             attempt += 1
             bindings.eprint(
-                "[max] http " + String(code) + ": retry "
+                "[idefix] http " + String(code) + ": retry "
                 + String(attempt) + "/" + String(cfg.retries)
             )
             journal(
@@ -572,7 +572,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             bindings.now_seconds() > deadline or resp.find("CURL_ERROR:28") >= 0
         ):
             # 28 is our own req_ms timeout clamp, which is deadline-derived
-            bindings.eprint("[max] --max-seconds exceeded")
+            bindings.eprint("[idefix] --max-seconds exceeded")
             exit_code = 2
             break
         if not cfg.bare and code == 400 and is_ctx_error(resp):
@@ -580,7 +580,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             var (nh, cleared) = compact_history(history, cfg.compact_keep)
             if cleared > 0:
                 history = nh
-                bindings.eprint("[max] context overflow: compacted " + String(cleared) + " bytes")
+                bindings.eprint("[idefix] context overflow: compacted " + String(cleared) + " bytes")
                 journal(
                     cfg,
                     '{"ev":"compact","ts":' + String(bindings.now_seconds())
@@ -596,12 +596,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     code = r[0]
                     resp = r[1]
         if code != 200:
-            bindings.eprint("[max] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
+            bindings.eprint("[idefix] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
             exit_code = 3
             break
         var root = bindings.cjson_parse(resp)
         if not root:
-            bindings.eprint("[max] response is not JSON")
+            bindings.eprint("[idefix] response is not JSON")
             exit_code = 3
             break
         var usage_ = bindings.cjson_get(root, "usage")
@@ -612,18 +612,18 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
         write_status(cfg, st, "")
         var choices = bindings.cjson_get(root, "choices")
         if not choices or bindings.cjson_len(choices) == 0:
-            bindings.eprint("[max] response has no choices")
+            bindings.eprint("[idefix] response has no choices")
             bindings.cjson_del(root)
             exit_code = 3
             break
         var choice0 = bindings.cjson_arr(choices, 0)
         var fr = bindings.cjson_str(bindings.cjson_get(choice0, "finish_reason"))
         if fr == "length":
-            bindings.eprint("[max] warning: finish_reason=length (truncated)")
+            bindings.eprint("[idefix] warning: finish_reason=length (truncated)")
         var msg = bindings.cjson_get(choice0, "message")
         if not msg:
             bindings.cjson_del(root)
-            bindings.eprint("[max] response has no message")
+            bindings.eprint("[idefix] response has no message")
             exit_code = 3
             break
         var calls = bindings.cjson_get(msg, "tool_calls")
@@ -729,7 +729,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         hasher = String(hw[0].strip())
                                         mark = cfg.session_dir + "/cmdmark-" + String(bindings.pid())
                                         if cfg.session_dir == "":
-                                            mark = "/tmp/max-cmdmark-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
+                                            mark = "/tmp/idefix-cmdmark-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                         var snap = "find . "
                                         if cfg.session_dir.find(cfg.repo + "/") == 0:
                                             snap += "-path './" + String(
@@ -739,13 +739,13 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         # them visible to changed_files (+48M overlaps
                                         # the boundary so nothing falls between)
                                         snap += (
-                                            "-name .git -prune -o -name .max-state -prune -o "
+                                            "-name .git -o -name .max-state -o -name .idefix-state -prune -o "
                                             + "-type f \\( -size -50M -exec " + hasher
                                             + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
                                             + " 2>/dev/null | sort > " + mark
                                         )
                                         _ = bindings.run_capture(snap, cfg.repo, 64, housekeeping_ms(deadline, 30000), False)
-                                        tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
+                                        tree = "/tmp/idefix-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                         var cr = bindings.run_capture(
                                             "rm -rf " + tree + "; cp -Rc . " + tree,
                                             cfg.repo, 64, 60000, False,
@@ -803,7 +803,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                             cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
                                         ) + "' -prune -o "
                                     dcmd += (
-                                        "-name .git -prune -o -name .max-state -prune -o "
+                                        "-name .git -o -name .max-state -o -name .idefix-state -prune -o "
                                         + "-type f \\( -size -50M -exec " + hasher
                                         + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
                                         + " 2>/dev/null"
@@ -877,14 +877,14 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     tool_msg(cid, '{"error":"call limit reached; not executed"}')
                 )
             if doom:
-                bindings.eprint("[max] loop guard stopped a repeated command")
+                bindings.eprint("[idefix] loop guard stopped a repeated command")
                 exit_code = 2
                 break
         else:
             if content.find("<tool_call") >= 0:
                 # the server returned markup it could not structure; the
                 # model meant to call a tool, so re-ask instead of finishing
-                bindings.eprint("[max] unparseable <tool_call> in reply; re-asking")
+                bindings.eprint("[idefix] unparseable <tool_call> in reply; re-asking")
                 push_msg(
                     cfg, history,
                     '{"role":"user","content":"Your reply contained a <tool_call> tag that could not be parsed. Re-issue it as a proper tool call, or answer without it."}',
@@ -897,18 +897,18 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             bindings.cjson_del(root)
             exit_code = 0
             if bindings.now_seconds() > deadline:
-                bindings.eprint("[max] --max-seconds exceeded")
+                bindings.eprint("[idefix] --max-seconds exceeded")
                 exit_code = 2
             break
         if msg_owner:
             bindings.cjson_del(msg_owner)
         bindings.cjson_del(root)
         if bindings.now_seconds() > deadline:
-            bindings.eprint("[max] --max-seconds exceeded")
+            bindings.eprint("[idefix] --max-seconds exceeded")
             exit_code = 2
             break
         if cfg.max_prompt_tokens > 0 and st.last_prompt_tokens > cfg.max_prompt_tokens:
-            bindings.eprint("[max] --max-prompt-tokens exceeded")
+            bindings.eprint("[idefix] --max-prompt-tokens exceeded")
             exit_code = 2
             break
         if cfg.compact_at > 0 and st.last_prompt_tokens > cfg.compact_at:
@@ -916,7 +916,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             if cleared > 0:
                 history = nh
                 bindings.eprint(
-                    "[max] prompt_tokens=" + String(st.last_prompt_tokens)
+                    "[idefix] prompt_tokens=" + String(st.last_prompt_tokens)
                     + " over --compact-at " + String(cfg.compact_at)
                     + ": cleared " + String(cleared) + " bytes of old tool output"
                 )
@@ -947,7 +947,7 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
         except:
             pass
     bindings.eprint(
-        "[max] requests=" + String(st.requests)
+        "[idefix] requests=" + String(st.requests)
         + " commands=" + String(st.commands)
         + " prompt_tokens=" + String(st.last_prompt_tokens)
         + " tokens=" + String(st.total_prompt_tokens) + "+" + String(st.total_completion_tokens)
@@ -994,14 +994,14 @@ def count_lines(s: String, upto: Int) -> Int:
 
 
 def run_edit(path: String) raises -> Int:
-    # max edit FILE < blocks: aider-style <<<<<<< SEARCH/=======/>>>>>>>
+    # idefix edit FILE < blocks: aider-style <<<<<<< SEARCH/=======/>>>>>>>
     # REPLACE pairs on stdin. Applies all blocks in memory, then writes
     # once - a failed block changes nothing.
     var text = String("")
     try:
         text = read_file(path)
     except e:
-        bindings.eprint("max edit: cannot read " + path + ": " + String(e))
+        bindings.eprint("idefix edit: cannot read " + path + ": " + String(e))
         return 1
     var spec = read_stdin()
     var pos = 0
@@ -1016,7 +1016,7 @@ def run_edit(path: String) raises -> Int:
         var mb = spec.find("\n" + M + "\n", sb)
         var eb = spec.find("\n" + E, mb if mb >= 0 else sb)
         if mb < 0 or eb < 0:
-            bindings.eprint("max edit: malformed block (missing ======= or >>>>>>> REPLACE)")
+            bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)")
             return 1
         var old = String(spec[byte= sb + S.byte_length() + 1 : mb])
         var new = String(spec[byte= mb + M.byte_length() + 2 : eb])
@@ -1030,7 +1030,7 @@ def run_edit(path: String) raises -> Int:
             for i in range(min(len(fhits), 4)):
                 near += "," + String(count_lines(text, fhits[i]))
             bindings.eprint(
-                "max edit: SEARCH matched " + String(len(hits)) + " times in " + path
+                "idefix edit: SEARCH matched " + String(len(hits)) + " times in " + path
                 + (" (anchors near lines " + near[byte=1:] + ")" if len(fhits) > 0 else "")
             )
             return 1
@@ -1040,7 +1040,7 @@ def run_edit(path: String) raises -> Int:
         applied += 1
         pos = eb + E.byte_length()
     if applied == 0:
-        bindings.eprint("max edit: no SEARCH/REPLACE blocks on stdin")
+        bindings.eprint("idefix edit: no SEARCH/REPLACE blocks on stdin")
         return 1
     # syntax gate: never write python that does not compile
     if path.endswith(".py"):
@@ -1058,10 +1058,10 @@ def run_edit(path: String) raises -> Int:
             )
             _ = bindings.run_capture("rm -f " + qtmp, ".", 64, 5000, False)
             if chk[1] != 0:
-                bindings.eprint("max edit: result does not compile:\n" + chk[0].strip())
+                bindings.eprint("idefix edit: result does not compile:\n" + chk[0].strip())
                 return 1
     if not bindings.write_file(path, text):
-        bindings.eprint("max edit: cannot write " + path)
+        bindings.eprint("idefix edit: cannot write " + path)
         return 1
     print("ok " + path + " (" + String(applied) + " block(s) applied)")
     return 0
@@ -1073,7 +1073,7 @@ def main() raises:
     if len(a0) >= 2 and String(a0[1]) == "edit":
         if len(a0) == 3:
             external_call["exit", c_int](c_int(run_edit(String(a0[2]))))
-        bindings.eprint("usage: max edit FILE   (reads SEARCH/REPLACE blocks on stdin)")
+        bindings.eprint("usage: idefix edit FILE   (reads SEARCH/REPLACE blocks on stdin)")
         external_call["exit", c_int](c_int(64))
     var cfg = parse_args()
     var st = TurnStats()
@@ -1085,7 +1085,7 @@ def main() raises:
         cfg.session_dir = ""
         if cfg.resume_file == "":
             cfg.journal_path = ""
-        bindings.eprint("[max] cannot create session dir; journal/status off")
+        bindings.eprint("[idefix] cannot create session dir; journal/status off")
 
     var system = SYSTEM_PROMPT
     var repo_docs = String("")
@@ -1119,11 +1119,11 @@ def main() raises:
             # the journal replays pre-compaction outputs at full fidelity, so
             # files may have changed since they were produced; say so once
             history += ',{"role":"user","content":"session resumed; earlier tool outputs may describe an older repo state. Re-run commands before relying on them."}'
-            bindings.eprint("[max] resumed from " + resume_src)
+            bindings.eprint("[idefix] resumed from " + resume_src)
         except e:
             if cfg.resume_file != "":
                 die("cannot read resume source: " + String(e), 64)
-            bindings.eprint("[max] no prior session; starting fresh")
+            bindings.eprint("[idefix] no prior session; starting fresh")
     elif cfg.cont:
         die("--continue needs a session dir (see --state-dir)", 64)
 
@@ -1149,16 +1149,16 @@ def main() raises:
     # REPL: one shared session; each stdin line is a task in context.
     var tty = bindings.stdin_is_tty()
     if tty:
-        bindings.eprint("[max] interactive mode: /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command")
+        bindings.eprint("[idefix] interactive mode: /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command")
     while True:
         if tty:
-            bindings.prompt("max> ")
+            bindings.prompt("idefix> ")
         var line = String("")
         try:
             line = bindings.read_line()
         except e:
             if String(e) != "eof":
-                bindings.eprint("[max] stdin read error: " + String(e))
+                bindings.eprint("[idefix] stdin read error: " + String(e))
             break
         var t = String(line.strip())
         if t == "":
@@ -1171,12 +1171,12 @@ def main() raises:
                 cfg,
                 '{"ev":"reset","ts":' + String(bindings.now_seconds()) + "}",
             )
-            bindings.eprint("[max] context reset")
+            bindings.eprint("[idefix] context reset")
             continue
         if not cfg.bare and String(t[byte= : 1]) == "!":
             var shell_cmd = String(t[byte=1:])
             if shell_cmd == "":
-                bindings.eprint("[max] !cmd: empty command")
+                bindings.eprint("[idefix] !cmd: empty command")
                 continue
             try:
                 var rc = bindings.run_capture(
@@ -1184,7 +1184,7 @@ def main() raises:
                 )
                 print(rc[0])
                 if rc[1] != 0:
-                    bindings.eprint("[max] !exit " + String(rc[1]))
+                    bindings.eprint("[idefix] !exit " + String(rc[1]))
                 journal(
                     cfg,
                     '{"ev":"shell","ts":' + String(bindings.now_seconds())
@@ -1192,7 +1192,7 @@ def main() raises:
                     + ',"exit":' + String(rc[1]) + "}",
                 )
             except e:
-                bindings.eprint("[max] exec failed: " + String(e))
+                bindings.eprint("[idefix] exec failed: " + String(e))
             continue
         var umsg2 = '{"role":"user","content":' + bindings.json_quote(t) + '}'
         push_msg(cfg, history, umsg2)
@@ -1205,6 +1205,6 @@ def main() raises:
         if final != "":
             print(final)
         if code != 0:
-            bindings.eprint("[max] turn ended with exit " + String(code))
+            bindings.eprint("[idefix] turn ended with exit " + String(code))
         exit_code = code
     finish(cfg, history, st, "", exit_code)

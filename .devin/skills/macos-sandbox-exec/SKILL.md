@@ -1,9 +1,9 @@
 ---
 name: macos-sandbox-exec
-description: Working knowledge for the macOS seatbelt (SBPL) profile used by --sandbox in max.mojo, plus the Linux bwrap parity recipe. Read before editing sandbox_profile() or adding sandbox operations.
+description: Working knowledge for the macOS seatbelt (SBPL) profile used by --sandbox in idefix.mojo, plus the Linux bwrap parity recipe. Read before editing sandbox_profile() or adding sandbox operations.
 ---
 
-# sandbox-exec (seatbelt) in max
+# sandbox-exec (seatbelt) in idefix
 
 `--sandbox` wraps each model command in `/usr/bin/sandbox-exec -p
 <profile>`. Spawn it by absolute path: PATH is model-influenced.

@@ -1,6 +1,6 @@
 ---
 name: mojo-c-ffi
-description: Traps and working patterns for Mojo external_call C FFI in this repo (bindings.mojo, max_shim.c). Read before adding or changing any external_call marshalling site. Covers dangling as_c_string_span pointers, calloc out-params, in/out bufsize parameters, envp/argv array walking, and platform-gated symbols.
+description: Traps and working patterns for Mojo external_call C FFI in this repo (bindings.mojo, idefix_shim.c). Read before adding or changing any external_call marshalling site. Covers dangling as_c_string_span pointers, calloc out-params, in/out bufsize parameters, envp/argv array walking, and platform-gated symbols.
 ---
 
 # Mojo C FFI in this repo
@@ -39,7 +39,7 @@ thing that catches a wrong one.
 5. **Platform-gated symbols do not link on the other OS.**
    `_NSGetExecutablePath` is Darwin-only; an `external_call` to it breaks
    the Linux build. Put the `#if defined(__APPLE__)`/`__linux__` split in
-   `max_shim.c` (see `max_self_exe`) and call the shim symbol instead.
+   `idefix_shim.c` (see `max_self_exe`) and call the shim symbol instead.
 
 ## Rules
 

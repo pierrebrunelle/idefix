@@ -1,6 +1,6 @@
-# max — agent principles
+# idefix - agent principles
 
-`max` measures the smallest loop that reliably closes coding tasks.
+`idefix` measures the smallest loop that reliably closes coding tasks.
 Agent capability = model x harness; the harness half should be small
 enough to hold in your head.
 
@@ -16,7 +16,7 @@ enough to hold in your head.
   measured number or closes a demonstrated correctness hole. Cite the
   benchmark row or the bug.
 - **One model-facing tool: `bash(command)`.** New affordances ride
-  inside commands (e.g. `max edit`), never new tool schemas.
+  inside commands (e.g. `idefix edit`), never new tool schemas.
 - **Every bound is local and enforced.** Requests, wall clock, command
   timeout, output caps, token budget, loop guard. No outer watchdog.
 - **Tool results do not lie.** exit 0 with no files changed is not

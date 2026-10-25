@@ -1,4 +1,4 @@
-# Tag push (v*) builds max for darwin-arm64 + linux-x86_64 and attaches
+# Tag push (v*) builds idefix for darwin-arm64 + linux-x86_64 and attaches
 # the binaries to the GitHub Release. mojo comes from `pip install modular`.
 name: release
 on:
@@ -10,9 +10,9 @@ jobs:
       matrix:
         include:
           - os: macos-14
-            artifact: max-darwin-arm64
+            artifact: idefix-darwin-arm64
           - os: ubuntu-22.04
-            artifact: max-linux-x86_64
+            artifact: idefix-linux-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
         run: make bundle MOJO=mojo
       - name: Test (linux/macos smoke)
         # /quit exits before server contact but needs MAX_MODEL set
-        run: ./bundle/max --help | grep -q max && echo "/quit" | MAX_MODEL=smoke/test ./bundle/max --repo . --bare
+        run: ./bundle/idefix --help | grep -q idefix && echo "/quit" | MAX_MODEL=smoke/test ./bundle/idefix --repo . --bare
       - name: Package bundle (binary + runtime dylibs)
         run: tar -czf "${{ matrix.artifact }}.tar.gz" -C bundle .
       - uses: actions/upload-artifact@v4
@@ -49,7 +49,7 @@ jobs:
         # One checksums.txt covering both tarballs; bare basenames so the
         # installer can verify a downloaded file with `shasum -a 256 -c`.
         run: |
-          for d in max-darwin-arm64 max-linux-x86_64; do
+          for d in idefix-darwin-arm64 idefix-linux-x86_64; do
             (cd "$d" && shasum -a 256 *.tar.gz)
           done > checksums.txt
           cat checksums.txt
@@ -57,6 +57,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            max-darwin-arm64/max-darwin-arm64.tar.gz
-            max-linux-x86_64/max-linux-x86_64.tar.gz
+            idefix-darwin-arm64/idefix-darwin-arm64.tar.gz
+            idefix-linux-x86_64/idefix-linux-x86_64.tar.gz
             checksums.txt

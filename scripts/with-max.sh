@@ -4,8 +4,8 @@
 # is left alone. Runs from the caller's cwd: --repo paths are relative to it.
 set -euo pipefail
 # Resolve symlinks so $SELF is where the script physically lives. Repo
-# layout: scripts/with-max.sh drives ../max. Bundle/install layout:
-# with-max sits next to the max binary it drives.
+# layout: scripts/with-max.sh drives ../idefix. Bundle/install layout:
+# with-max sits next to the idefix binary it drives.
 SELF="$0"
 while [ -L "$SELF" ]; do
     dir="$(cd "$(dirname "$SELF")" && pwd)"
@@ -13,19 +13,19 @@ while [ -L "$SELF" ]; do
     case "$SELF" in /*) ;; *) SELF="$dir/$SELF" ;; esac
 done
 ROOT="$(cd "$(dirname "$SELF")" && pwd)"
-# -ef keeps a wrapper installed as "max" from resolving to itself; -f
+# -ef keeps a wrapper installed under any name from resolving to itself; -f
 # because a directory passes -x.
-if [ ! -f "$ROOT/max" ] || [ "$ROOT/max" -ef "$SELF" ]; then
+if [ ! -f "$ROOT/idefix" ] || [ "$ROOT/idefix" -ef "$SELF" ]; then
     ROOT="$(cd "$ROOT/.." && pwd)"
 fi
 
 # subcommands that never need a model server go straight to the binary
 case "${1:-}" in
-    edit|-h|--help|--version) exec "$ROOT/max" "$@" ;;
+    edit|-h|--help|--version) exec "$ROOT/idefix" "$@" ;;
 esac
 
 # The model-server CLI defaults to `max` (Modular's). If this script is
-# itself on PATH as `max` (any name, via symlink or not), skip candidates
+# itself on PATH (any name, via symlink or not), skip candidates
 # that resolve to it: -ef compares files, not strings.
 MAXCLI="${MAXCLI:-}"
 if [ -z "$MAXCLI" ]; then
@@ -104,14 +104,14 @@ else
         exit 1
     }
 fi
-if [ ! -f "$ROOT/max" ] || [ ! -x "$ROOT/max" ]; then
-    echo "with-max: no runnable max binary at $ROOT/max" >&2
+if [ ! -f "$ROOT/idefix" ] || [ ! -x "$ROOT/idefix" ]; then
+    echo "with-max: no runnable idefix binary at $ROOT/idefix" >&2
     exit 1
 fi
 # linux bundles rely on this when patchelf was unavailable at build time;
 # on macOS the binary already carries @executable_path
 export LD_LIBRARY_PATH="$ROOT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-"$ROOT/max" "$@"
+"$ROOT/idefix" "$@"
 rc=$?
 # Plain exit so the EXIT trap fires: kill the server we started, drop its log.
 exit "$rc"

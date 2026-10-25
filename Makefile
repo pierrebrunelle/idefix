@@ -1,27 +1,27 @@
 MOJO ?= mojo
 CC ?= cc
 
-all: libmax_c.a max
+all: libidefix_c.a idefix
 
-libmax_c.a: max_shim.o vendor/cJSON.o
+libidefix_c.a: idefix_shim.o vendor/cJSON.o
 	ar rcs $@ $^
 
-max_shim.o: max_shim.c
+idefix_shim.o: idefix_shim.c
 	$(CC) -O2 -c -o $@ $<
 
 vendor/cJSON.o: vendor/cJSON.c vendor/cJSON.h
 	$(CC) -O2 -c -o $@ $<
 
-max: max.mojo bindings.mojo libmax_c.a
-	$(MOJO) build max.mojo -o max -I . -Xlinker libmax_c.a -Xlinker -lcurl
+idefix: idefix.mojo bindings.mojo libidefix_c.a
+	$(MOJO) build idefix.mojo -o idefix -I . -Xlinker libidefix_c.a -Xlinker -lcurl
 
-test: max
+test: idefix
 	bash tests/run.sh
 
-bundle: max
+bundle: idefix
 	rm -rf bundle
 	mkdir -p bundle
-	cp max bundle/
+	cp idefix bundle/
 	cp scripts/with-max.sh bundle/with-max
 	if [ "$$(uname -s)" = "Linux" ]; then ext=so; else ext=dylib; fi ; \
 	for lib in libKGENCompilerRTShared libAsyncRTMojoBindings libMSupportGlobals libAsyncRTRuntimeGlobals ; do \
@@ -30,15 +30,15 @@ bundle: max
 		cp "$$f" bundle/ ; \
 	done
 	if [ "$$(uname -s)" = "Linux" ]; then \
-		patchelf --set-rpath '$$ORIGIN' bundle/max \
+		patchelf --set-rpath '$$ORIGIN' bundle/idefix \
 		|| echo "warn: patchelf missing; with-max exports LD_LIBRARY_PATH as fallback" ; \
 	else \
-		install_name_tool -delete_rpath "$$(otool -l bundle/max | grep -A2 LC_RPATH | grep path | head -1 | awk '{print $$2}')" bundle/max || true ; \
-		install_name_tool -add_rpath @executable_path bundle/max ; \
+		install_name_tool -delete_rpath "$$(otool -l bundle/idefix | grep -A2 LC_RPATH | grep path | head -1 | awk '{print $$2}')" bundle/idefix || true ; \
+		install_name_tool -add_rpath @executable_path bundle/idefix ; \
 	fi
 
 clean:
-	rm -f max libmax_c.a max_shim.o vendor/cJSON.o
+	rm -f idefix libidefix_c.a idefix_shim.o vendor/cJSON.o
 	rm -rf bundle
 
 .PHONY: all test bundle clean

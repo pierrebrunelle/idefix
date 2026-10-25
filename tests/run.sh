@@ -1,10 +1,10 @@
 #!/bin/bash
-# Trouble-path tests against the stub. Requires ./max built and MAX_MODEL set.
+# Trouble-path tests against the stub. Requires ./idefix built and MAX_MODEL set.
 set -u
 cd "$(dirname "$0")/.."
 export MAX_BASE_URL="http://127.0.0.1:18923/v1"
 export MAX_MODEL="${MAX_MODEL:-test-model}"
-export MAX_STATE_DIR=/tmp/max-test-state   # keep tests out of real $HOME
+export IDEFIX_STATE_DIR=/tmp/idefix-test-state   # keep tests out of real $HOME
 FAIL=0
 
 run_mode() {
@@ -22,21 +22,21 @@ check() { # name expected actual
 }
 
 # 1. normal: tool_calls then final, exit 0
-out=$(run_mode normal ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode normal ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "normal exit" 0 "$rc"
 check "normal answer" "Done." "$out"
 
 # 2. badargs: invalid arguments JSON -> error result, no exec, then final, exit 0
-out=$(run_mode badargs ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode badargs ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "badargs exit" 0 "$rc"
 grep -q "not valid JSON" /tmp/stub_badargs.log && echo "PASS badargs error result" || { echo "FAIL badargs error result"; FAIL=1; }
 
 # 3. malformed: invalid envelope -> exit 3
-out=$(run_mode malformed ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode malformed ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "malformed exit" 3 "$rc"
 
 # 4. batch: two calls -> two results in order
-out=$(run_mode batch ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode batch ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "batch exit" 0 "$rc"
 check "batch answer" "Done." "$out"
 n=$(grep -c "tool_call_id" /tmp/stub_batch.log || true)
@@ -44,7 +44,7 @@ grep -q "call_a.*call_b\|expected=\['call_a', 'call_b'\]" /tmp/stub_batch.log &&
 
 # 5. sleep: timeout kills process group -> tool result exit_code 124, then final
 start=$(python3 -c 'import time;print(time.time())')
-out=$(run_mode sleep ./max --repo . --max-command-seconds 1 "task" 2>/dev/null); rc=$?
+out=$(run_mode sleep ./idefix --repo . --max-command-seconds 1 "task" 2>/dev/null); rc=$?
 elapsed=$(python3 -c "import time;print(int(time.time()-$start))")
 check "sleep exit" 0 "$rc"
 check "sleep killed fast" 1 "$([ "$elapsed" -le 6 ] && echo 1 || echo 0)"
@@ -53,191 +53,191 @@ grep -q "exit_code..124" /tmp/stub_sleep.log && echo "PASS sleep 124" || { echo 
 pgrep -f "sleep 37" >/dev/null && { echo "FAIL orphan survived"; FAIL=1; } || echo "PASS no orphan"
 
 # 6. budget: max-requests 1 -> exit 2
-out=$(run_mode normal ./max --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
+out=$(run_mode normal ./idefix --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
 check "budget exit" 2 "$rc"
 
 # 7. transcript written
-rm -f /tmp/max_t.json
-run_mode normal ./max --repo . --transcript /tmp/max_t.json "task" >/dev/null 2>&1
-python3 -c "import json;d=json.load(open('/tmp/max_t.json'));assert [m['role'] for m in d]==['system','user','assistant','tool','assistant'],d" && echo "PASS transcript" || { echo "FAIL transcript"; FAIL=1; }
+rm -f /tmp/idefix_t.json
+run_mode normal ./idefix --repo . --transcript /tmp/idefix_t.json "task" >/dev/null 2>&1
+python3 -c "import json;d=json.load(open('/tmp/idefix_t.json'));assert [m['role'] for m in d]==['system','user','assistant','tool','assistant'],d" && echo "PASS transcript" || { echo "FAIL transcript"; FAIL=1; }
 
 # 8. --help exits cleanly
-out=$(./max --help 2>&1); rc=$?
+out=$(./idefix --help 2>&1); rc=$?
 check "help rc" 0 "$rc"
-echo "$out" | grep -q "usage: max" && echo "PASS help text" || { echo "FAIL help text"; FAIL=1; }
+echo "$out" | grep -q "usage: idefix" && echo "PASS help text" || { echo "FAIL help text"; FAIL=1; }
 
 # 9. REPL: piped lines share one session; /quit exits clean; EOF-clean exit
-out=$(printf 'one\ntwo\n/quit\n' | run_mode normal ./max --repo . 2>/dev/null); rc=$?
+out=$(printf 'one\ntwo\n/quit\n' | run_mode normal ./idefix --repo . 2>/dev/null); rc=$?
 check "repl exit" 0 "$rc"
 check "repl two turns" $'Done.\nDone.' "$out"
-out=$(./max </dev/null 2>&1); rc=$?
+out=$(./idefix </dev/null 2>&1); rc=$?
 check "repl EOF exit" 0 "$rc"
 
 # 10. flaky: server 500 once -> retry succeeds
-rm -rf /tmp/max-state-flaky
-out=$(run_mode flaky ./max --repo . --state-dir /tmp/max-state-flaky "task" 2>/dev/null); rc=$?
+rm -rf /tmp/idefix-state-flaky
+out=$(run_mode flaky ./idefix --repo . --state-dir /tmp/idefix-state-flaky "task" 2>/dev/null); rc=$?
 check "flaky exit" 0 "$rc"
 check "flaky answer" "Done." "$out"
-grep -q '"ev":"retry"' /tmp/max-state-flaky/sessions/*/journal.jsonl && echo "PASS flaky journal" || { echo "FAIL flaky journal"; FAIL=1; }
+grep -q '"ev":"retry"' /tmp/idefix-state-flaky/sessions/*/journal.jsonl && echo "PASS flaky journal" || { echo "FAIL flaky journal"; FAIL=1; }
 
 # 11. bigusage: prompt_tokens over --compact-at -> next request carries cleared tool output
-rm -rf /tmp/max-state-compact
-out=$(run_mode bigusage ./max --repo . --compact-keep 0 --state-dir /tmp/max-state-compact "task" 2>/dev/null); rc=$?
+rm -rf /tmp/idefix-state-compact
+out=$(run_mode bigusage ./idefix --repo . --compact-keep 0 --state-dir /tmp/idefix-state-compact "task" 2>/dev/null); rc=$?
 check "bigusage exit" 0 "$rc"
 check "bigusage answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_bigusage.log && echo "PASS bigusage cleared" || { echo "FAIL bigusage cleared"; cat /tmp/stub_bigusage.log; FAIL=1; }
-grep -q '"ev":"compact"' /tmp/max-state-compact/sessions/*/journal.jsonl && echo "PASS bigusage journal" || { echo "FAIL bigusage journal"; FAIL=1; }
+grep -q '"ev":"compact"' /tmp/idefix-state-compact/sessions/*/journal.jsonl && echo "PASS bigusage journal" || { echo "FAIL bigusage journal"; FAIL=1; }
 
 # 12. ctxerr: 400 context-length -> compact + retry -> Done
-rm -rf /tmp/max-state-ctx
-out=$(run_mode ctxerr ./max --repo . --compact-keep 0 --state-dir /tmp/max-state-ctx "task" 2>/dev/null); rc=$?
+rm -rf /tmp/idefix-state-ctx
+out=$(run_mode ctxerr ./idefix --repo . --compact-keep 0 --state-dir /tmp/idefix-state-ctx "task" 2>/dev/null); rc=$?
 check "ctxerr exit" 0 "$rc"
 check "ctxerr answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_ctxerr.log && echo "PASS ctxerr cleared" || { echo "FAIL ctxerr cleared"; cat /tmp/stub_ctxerr.log; FAIL=1; }
 
 # 12b. ctxbig: capitalized context error also triggers compaction
-rm -rf /tmp/max-state-ctx2
-out=$(run_mode ctxbig ./max --repo . --compact-keep 0 --state-dir /tmp/max-state-ctx2 "task" 2>/dev/null); rc=$?
+rm -rf /tmp/idefix-state-ctx2
+out=$(run_mode ctxbig ./idefix --repo . --compact-keep 0 --state-dir /tmp/idefix-state-ctx2 "task" 2>/dev/null); rc=$?
 check "ctxbig exit" 0 "$rc"
 check "ctxbig answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_ctxbig.log && echo "PASS ctxbig cleared" || { echo "FAIL ctxbig cleared"; cat /tmp/stub_ctxbig.log; FAIL=1; }
 
 # 13. loop: same command every turn -> loop_warning, then doom stop at 5
-find "$MAX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
-out=$(run_mode loop ./max --repo . --max-requests 6 "task" 2>/dev/null); rc=$?
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
+out=$(run_mode loop ./idefix --repo . --max-requests 6 "task" 2>/dev/null); rc=$?
 check "loop exit" 2 "$rc"
 grep -q "loop_warning" /tmp/stub_loop.log && echo "PASS loop warning" || { echo "FAIL loop warning"; cat /tmp/stub_loop.log; FAIL=1; }
-grep -q '"stop":true' "$MAX_STATE_DIR"/sessions/*/journal.jsonl 2>/dev/null && echo "PASS loop doom stop" || { echo "FAIL loop doom stop"; FAIL=1; }
+grep -q '"stop":true' "$IDEFIX_STATE_DIR"/sessions/*/journal.jsonl 2>/dev/null && echo "PASS loop doom stop" || { echo "FAIL loop doom stop"; FAIL=1; }
 
 # 13b. wall deadline stops a runaway loop and clamps command timeout
 start=$(python3 -c 'import time;print(time.time())')
-out=$(run_mode loop ./max --repo . --max-seconds 1 --no-loop-guard "task" 2>/dev/null); rc=$?
+out=$(run_mode loop ./idefix --repo . --max-seconds 1 --no-loop-guard "task" 2>/dev/null); rc=$?
 elapsed=$(python3 -c "import time;print(int(time.time()-$start))")
 check "deadline exit" 2 "$rc"
 check "deadline fast" 1 "$([ "$elapsed" -le 6 ] && echo 1 || echo 0)"
 start=$(python3 -c 'import time;print(time.time())')
-out=$(run_mode sleep ./max --repo . --max-seconds 1 --max-command-seconds 30 "task" 2>/dev/null)
+out=$(run_mode sleep ./idefix --repo . --max-seconds 1 --max-command-seconds 30 "task" 2>/dev/null)
 elapsed=$(python3 -c "import time;print(int(time.time()-$start))")
 check "deadline clamp" 1 "$([ "$elapsed" -le 6 ] && echo 1 || echo 0)"
 
 # 13c. sednoop: exit-0 write-shaped command with no file change -> warning
-out=$(run_mode sednoop ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode sednoop ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "sednoop exit" 0 "$rc"
 grep -q "may not have applied" /tmp/stub_sednoop.log && echo "PASS noop warning" || { echo "FAIL noop warning"; cat /tmp/stub_sednoop.log; FAIL=1; }
 
-# 13d. medit: `max edit` reachable on scrubbed PATH, applies unique SEARCH block
-out=$(run_mode medit ./max --repo . "task" 2>/dev/null); rc=$?
+# 13d. medit: `idefix edit` reachable on scrubbed PATH, applies unique SEARCH block
+out=$(run_mode medit ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "medit exit" 0 "$rc"
 grep -q "block(s) applied" /tmp/stub_medit.log && grep -q "x = 9" /tmp/stub_medit.log && echo "PASS medit apply" || { echo "FAIL medit apply"; cat /tmp/stub_medit.log; FAIL=1; }
 rm -f e.py
 
 # 13e. ediff: changed file -> compact unified diff in tool result (non-bare)
-out=$(run_mode ediff ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode ediff ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "ediff exit" 0 "$rc"
 grep -q '"diff"' /tmp/stub_ediff.log && grep -q "+a" /tmp/stub_ediff.log && echo "PASS diff echo" || { echo "FAIL diff echo"; cat /tmp/stub_ediff.log; FAIL=1; }
 rm -f d.txt
 
 # 13f. redirnoop: 2>&1 is fd duplication, not a file write -> no warning
-out=$(run_mode redirnoop ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode redirnoop ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "redirnoop exit" 0 "$rc"
 grep -q "may not have applied" /tmp/stub_redirnoop.log && { echo "FAIL redir false warning"; cat /tmp/stub_redirnoop.log; FAIL=1; } || echo "PASS no redir warning"
 
 # 13g. injname: model-created filename reaching the diff echo must not execute
 rm -f pwned.txt 'x$(touch pwned.txt)'
-out=$(run_mode injname ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode injname ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "injname exit" 0 "$rc"
 [ -f pwned.txt ] && { echo "FAIL filename injection"; FAIL=1; } || echo "PASS filename quoting"
 rm -f 'x$(touch pwned.txt)'
 
 # 13h. badmarkup: unparseable tool_call markup -> nudge + retry, then Done.
-out=$(run_mode badmarkup ./max --repo . --max-requests 5 "task" 2>/dev/null); rc=$?
+out=$(run_mode badmarkup ./idefix --repo . --max-requests 5 "task" 2>/dev/null); rc=$?
 check "badmarkup exit" 0 "$rc"
 check "badmarkup recovered" "Done." "$out"
 grep -q "could not be parsed" /tmp/stub_badmarkup.log && echo "PASS badmarkup nudge" || { echo "FAIL badmarkup nudge"; cat /tmp/stub_badmarkup.log; FAIL=1; }
 
 # 13i. markup: well-formed <tool_call> markup is rescued and executed
-out=$(run_mode markup ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode markup ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "markup exit" 0 "$rc"
 grep -q "markup-ok" /tmp/stub_markup.log && echo "PASS markup rescued" || { echo "FAIL markup rescued"; cat /tmp/stub_markup.log; FAIL=1; }
 
 # 13j. think: <think> block stripped from the final answer
-out=$(run_mode think ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode think ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "think exit" 0 "$rc"
 check "think final" "Done." "$out"
 
 # 13k. flood: --max-output-bytes caps output and counts the discard
-out=$(run_mode flood ./max --repo . --max-output-bytes 1000 "task" 2>/dev/null); rc=$?
+out=$(run_mode flood ./idefix --repo . --max-output-bytes 1000 "task" 2>/dev/null); rc=$?
 check "flood exit" 0 "$rc"
 grep -q '"discarded_bytes":[1-9]' /tmp/stub_flood.log && echo "PASS flood discarded" || { echo "FAIL flood discarded"; cat /tmp/stub_flood.log; FAIL=1; }
 
 # 13l. many: tool_calls over the cap get a limit error, never run
-out=$(run_mode many ./max --repo . --max-calls-per-response 3 "task" 2>/dev/null); rc=$?
+out=$(run_mode many ./idefix --repo . --max-calls-per-response 3 "task" 2>/dev/null); rc=$?
 check "many exit" 0 "$rc"
 grep -q "call limit reached" /tmp/stub_many.log && echo "PASS call cap" || { echo "FAIL call cap"; cat /tmp/stub_many.log; FAIL=1; }
 
 # 13m. stall: --max-seconds kills a stalled request
-out=$(run_mode stall ./max --repo . --max-seconds 3 "task" 2>/dev/null); rc=$?
+out=$(run_mode stall ./idefix --repo . --max-seconds 3 "task" 2>/dev/null); rc=$?
 check "stall exit" 2 "$rc"
 
 # 13n. REPL: --max-requests is per turn, not per session
-out=$(printf 'a\nb\n/quit\n' | run_mode finalans ./max --repo . --max-requests 1 2>/dev/null); rc=$?
+out=$(printf 'a\nb\n/quit\n' | run_mode finalans ./idefix --repo . --max-requests 1 2>/dev/null); rc=$?
 check "repl exit" 0 "$rc"
 [ "$(echo "$out" | grep -c 'Done.')" = "2" ] && echo "PASS repl per-turn budget" || { echo "FAIL repl per-turn budget: $out"; FAIL=1; }
 
-# 13o. max edit failure contract: loud rc1, file untouched
+# 13o. idefix edit failure contract: loud rc1, file untouched
 printf 'x = 1\n' > e.py
-printf '<<<<<<< SEARCH\nnope\n=======\nx = 2\n>>>>>>> REPLACE\n' | ./max edit e.py >/dev/null 2>&1; rc=$?
+printf '<<<<<<< SEARCH\nnope\n=======\nx = 2\n>>>>>>> REPLACE\n' | ./idefix edit e.py >/dev/null 2>&1; rc=$?
 check "edit nomatch exit" 1 "$rc"
 grep -q "x = 1" e.py && ! grep -q "x = 2" e.py && echo "PASS edit nomatch unchanged" || { echo "FAIL edit nomatch"; FAIL=1; }
 printf 'x = 1\n' > e.py
-printf '<<<<<<< SEARCH\nx = 1\n=======\nx = (\n>>>>>>> REPLACE\n' | ./max edit e.py >/dev/null 2>&1; rc=$?
+printf '<<<<<<< SEARCH\nx = 1\n=======\nx = (\n>>>>>>> REPLACE\n' | ./idefix edit e.py >/dev/null 2>&1; rc=$?
 check "edit badpy exit" 1 "$rc"
 grep -q "x = 1" e.py && echo "PASS edit badpy unchanged" || { echo "FAIL edit badpy"; FAIL=1; }
 rm -f e.py __pycache__ -r
 
-# 13p. --version and bare `max edit` (no FILE) exit clean, no server touched
-out=$(./max --version); rc=$?
+# 13p. --version and bare `idefix edit` (no FILE) exit clean, no server touched
+out=$(./idefix --version); rc=$?
 check "version exit" 0 "$rc"
-echo "$out" | grep -q "^max 0" && echo "PASS version" || { echo "FAIL version: $out"; FAIL=1; }
-./max edit </dev/null >/dev/null 2>&1; rc=$?
+echo "$out" | grep -q "^idefix 0" && echo "PASS version" || { echo "FAIL version: $out"; FAIL=1; }
+./idefix edit </dev/null >/dev/null 2>&1; rc=$?
 check "bare edit exit" 64 "$rc"
 
 # 13q. detach: (cmd &) strays in the child pgroup die with the command
-out=$(run_mode detach ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode detach ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "detach exit" 0 "$rc"
 sleep 1
 ! pgrep -f "sleep 29" >/dev/null && echo "PASS detach orphan killed" || { echo "FAIL detach orphan killed"; pgrep -fl "sleep 29"; pkill -f "sleep 29"; FAIL=1; }
 
 # 13r. --max-prompt-tokens halts the run with exit 2
-out=$(run_mode bigusage ./max --repo . --max-prompt-tokens 50 "task" 2>/dev/null); rc=$?
+out=$(run_mode bigusage ./idefix --repo . --max-prompt-tokens 50 "task" 2>/dev/null); rc=$?
 check "promptcap exit" 2 "$rc"
 
 # 13s. --notify CMD runs when the run finishes
-nf=/tmp/max-notify-$$
+nf=/tmp/idefix-notify-$$
 rm -f "$nf"
-out=$(run_mode normal ./max --repo . --notify "touch $nf" "task" 2>/dev/null); rc=$?
+out=$(run_mode normal ./idefix --repo . --notify "touch $nf" "task" 2>/dev/null); rc=$?
 check "notify exit" 0 "$rc"
 [ -f "$nf" ] && echo "PASS notify ran" || { echo "FAIL notify ran"; FAIL=1; }
 rm -f "$nf"
 
 # 13t. mid-batch-cut journal: --resume drops unpaired assistant tool_calls
-jf=/tmp/max-journal-cut-$$.jsonl
+jf=/tmp/idefix-journal-cut-$$.jsonl
 cat > "$jf" <<'JEOF'
 {"ev":"run","ts":1}
 {"ev":"msg","m":{"role":"user","content":"hi"}}
 {"ev":"msg","m":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"echo x\"}"}}]}}
 JEOF
-out=$(run_mode finalans ./max --repo . --resume "$jf" "task" 2>/dev/null); rc=$?
+out=$(run_mode finalans ./idefix --repo . --resume "$jf" "task" 2>/dev/null); rc=$?
 check "resumecut exit" 0 "$rc"
 check "resumecut answer" "Done." "$out"
 rm -f "$jf"
 
 # 13u. misc one-liners: MAX_MODEL required, nan temp, /exit alias
-out=$(env -u MAX_MODEL MAX_BASE_URL=http://127.0.0.1:1/v1 ./max --repo . "task" 2>&1); rc=$?
+out=$(env -u MAX_MODEL MAX_BASE_URL=http://127.0.0.1:1/v1 ./idefix --repo . "task" 2>&1); rc=$?
 check "modelreq exit" 64 "$rc"
-MAX_BASE_URL=http://127.0.0.1:1/v1 MAX_MODEL=test ./max --repo . --temperature nan "task" >/dev/null 2>&1; rc=$?
+MAX_BASE_URL=http://127.0.0.1:1/v1 MAX_MODEL=test ./idefix --repo . --temperature nan "task" >/dev/null 2>&1; rc=$?
 check "nantemp exit" 64 "$rc"
-out=$(printf 'a\n/exit\n' | run_mode finalans ./max --repo . 2>/dev/null); rc=$?
+out=$(printf 'a\n/exit\n' | run_mode finalans ./idefix --repo . 2>/dev/null); rc=$?
 check "exitalias exit" 0 "$rc"
 [ "$(echo "$out" | grep -c 'Done.')" = "1" ] && echo "PASS /exit alias" || { echo "FAIL /exit alias: $out"; FAIL=1; }
 
@@ -249,7 +249,7 @@ check "with-max answer" "Done." "$out"
 # 13d. sandbox (macOS seatbelt): writes outside repo denied, inside allowed
 if command -v sandbox-exec >/dev/null 2>&1; then
     rm -f .sbx-ok "$HOME/.sbx-denied-xyz"
-    out=$(run_mode sbx ./max --repo . --sandbox "task" 2>/dev/null); rc=$?
+    out=$(run_mode sbx ./idefix --repo . --sandbox "task" 2>/dev/null); rc=$?
     check "sbx exit" 0 "$rc"
     [ -f .sbx-ok ] && echo "PASS sbx repo write" || { echo "FAIL sbx repo write"; FAIL=1; }
     [ ! -f "$HOME/.sbx-denied-xyz" ] && echo "PASS sbx home denied" || { echo "FAIL sbx home denied"; FAIL=1; }
@@ -260,162 +260,162 @@ else
 fi
 
 # 14. status file + journal events for a normal run
-rm -rf /tmp/max-state-obs
-run_mode normal ./max --repo . --state-dir /tmp/max-state-obs "task" >/dev/null 2>&1
-ls /tmp/max-state-obs/sessions/*/status >/dev/null 2>&1 && echo "PASS status file" || { echo "FAIL status file"; FAIL=1; }
-J=$(ls /tmp/max-state-obs/sessions/*/journal.jsonl 2>/dev/null)
+rm -rf /tmp/idefix-state-obs
+run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-obs "task" >/dev/null 2>&1
+ls /tmp/idefix-state-obs/sessions/*/status >/dev/null 2>&1 && echo "PASS status file" || { echo "FAIL status file"; FAIL=1; }
+J=$(ls /tmp/idefix-state-obs/sessions/*/journal.jsonl 2>/dev/null)
 grep -q '"ev":"run"' $J && grep -q '"ev":"done"' $J && echo "PASS journal events" || { echo "FAIL journal events"; cat $J 2>/dev/null; FAIL=1; }
 
 # 15. --continue: resumes this repo's journal
-rm -rf /tmp/max-state-cont
-run_mode normal ./max --repo . --state-dir /tmp/max-state-cont "task" >/dev/null 2>&1
-out=$(run_mode normal ./max --repo . --state-dir /tmp/max-state-cont --continue "task2" 2>&1); rc=$?
+rm -rf /tmp/idefix-state-cont
+run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-cont "task" >/dev/null 2>&1
+out=$(run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-cont --continue "task2" 2>&1); rc=$?
 check "continue exit" 0 "$rc"
 echo "$out" | grep -q "resumed from" && echo "PASS continue resumed" || { echo "FAIL continue resumed"; echo "$out"; FAIL=1; }
-JC=$(ls /tmp/max-state-cont/sessions/*/journal.jsonl 2>/dev/null)
+JC=$(ls /tmp/idefix-state-cont/sessions/*/journal.jsonl 2>/dev/null)
 n_run=$(grep -c '"ev":"run"' $JC)
 check "continue two runs" 2 "$n_run"
 
 # 16. --temperature reaches the request body
-run_mode normal ./max --repo . --temperature 0.7 "task" >/dev/null 2>&1
+run_mode normal ./idefix --repo . --temperature 0.7 "task" >/dev/null 2>&1
 grep -q "STUB temp: 0.7" /tmp/stub_normal.log && echo "PASS temperature" || { echo "FAIL temperature"; cat /tmp/stub_normal.log; FAIL=1; }
 
 # 17. --resume FILE: replays a copied journal; missing file exits 64
-rm -rf /tmp/max-state-res
-run_mode normal ./max --repo . --state-dir /tmp/max-state-res "task" >/dev/null 2>&1
-cp /tmp/max-state-res/sessions/*/journal.jsonl /tmp/max-res.jsonl
-out=$(run_mode normal ./max --repo . --resume /tmp/max-res.jsonl "task2" 2>&1); rc=$?
+rm -rf /tmp/idefix-state-res
+run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-res "task" >/dev/null 2>&1
+cp /tmp/idefix-state-res/sessions/*/journal.jsonl /tmp/idefix-res.jsonl
+out=$(run_mode normal ./idefix --repo . --resume /tmp/idefix-res.jsonl "task2" 2>&1); rc=$?
 check "resume exit" 0 "$rc"
 echo "$out" | grep -q "resumed from" && echo "PASS resume" || { echo "FAIL resume"; echo "$out"; FAIL=1; }
-out=$(run_mode normal ./max --repo . --resume /tmp/max-missing.jsonl "task" 2>&1); rc=$?
+out=$(run_mode normal ./idefix --repo . --resume /tmp/idefix-missing.jsonl "task" 2>&1); rc=$?
 check "resume missing exits 64" 64 "$rc"
 
 # 18. REPL !cmd: runs locally, no model request; bare "!" warns, still no request
-out=$(printf '!echo PASSTHRU\n/quit\n' | run_mode normal ./max --repo . 2>/dev/null)
+out=$(printf '!echo PASSTHRU\n/quit\n' | run_mode normal ./idefix --repo . 2>/dev/null)
 echo "$out" | grep -q "PASSTHRU" && echo "PASS bang ran" || { echo "FAIL bang ran"; FAIL=1; }
 [ ! -s /tmp/stub_normal.log ] && echo "PASS bang no request" || { echo "FAIL bang made request"; cat /tmp/stub_normal.log; FAIL=1; }
-out=$(printf '!\n/quit\n' | run_mode normal ./max --repo . 2>&1)
+out=$(printf '!\n/quit\n' | run_mode normal ./idefix --repo . 2>&1)
 echo "$out" | grep -q "empty command" && echo "PASS bare bang warns" || { echo "FAIL bare bang warns"; echo "$out"; FAIL=1; }
 [ ! -s /tmp/stub_normal.log ] && echo "PASS bare bang no request" || { echo "FAIL bare bang made request"; cat /tmp/stub_normal.log; FAIL=1; }
 
 # 19. AGENTS.md auto-loads into the system prompt; --bare does not
-rm -rf /tmp/max-agents-repo
-mkdir -p /tmp/max-agents-repo && echo "RULE: always eat oranges" > /tmp/max-agents-repo/AGENTS.md
-run_mode normal ./max --repo /tmp/max-agents-repo "task" >/dev/null 2>&1
+rm -rf /tmp/idefix-agents-repo
+mkdir -p /tmp/idefix-agents-repo && echo "RULE: always eat oranges" > /tmp/idefix-agents-repo/AGENTS.md
+run_mode normal ./idefix --repo /tmp/idefix-agents-repo "task" >/dev/null 2>&1
 grep -q "eat oranges" /tmp/stub_normal.log && echo "PASS agents.md loaded" || { echo "FAIL agents.md loaded"; cat /tmp/stub_normal.log; FAIL=1; }
 rm -f /tmp/stub_normal.log
-run_mode normal ./max --repo /tmp/max-agents-repo --bare "task" >/dev/null 2>&1
+run_mode normal ./idefix --repo /tmp/idefix-agents-repo --bare "task" >/dev/null 2>&1
 grep -q "eat oranges" /tmp/stub_normal.log && { echo "FAIL bare loaded agents.md"; FAIL=1; } || echo "PASS bare skips agents.md"
 
 # 20. --bare writes no state
-rm -rf /tmp/max-state-bare
-run_mode normal ./max --repo . --bare --state-dir /tmp/max-state-bare "task" >/dev/null 2>&1
-[ ! -e /tmp/max-state-bare ] && echo "PASS bare no state" || { echo "FAIL bare wrote state"; FAIL=1; }
+rm -rf /tmp/idefix-state-bare
+run_mode normal ./idefix --repo . --bare --state-dir /tmp/idefix-state-bare "task" >/dev/null 2>&1
+[ ! -e /tmp/idefix-state-bare ] && echo "PASS bare no state" || { echo "FAIL bare wrote state"; FAIL=1; }
 
 # 21. UTF-8 reaches the wire unmodified (json_quote pass-through)
-run_mode normal ./max --repo . --bare "café" >/dev/null 2>&1
+run_mode normal ./idefix --repo . --bare "café" >/dev/null 2>&1
 grep -q "STUB user: café" /tmp/stub_normal.log && echo "PASS utf8" || { echo "FAIL utf8"; grep "STUB user" /tmp/stub_normal.log; FAIL=1; }
 
 # 22. chatty command still hits --max-command-seconds
-printf '!yes\n' | ./max --repo . --max-command-seconds 1 >/dev/null 2>&1 &
+printf '!yes\n' | ./idefix --repo . --max-command-seconds 1 >/dev/null 2>&1 &
 pid=$!; sleep 4
 if kill -0 "$pid" 2>/dev/null; then echo "FAIL chatty timeout"; kill "$pid" 2>/dev/null; FAIL=1; else echo "PASS chatty timeout"; fi
 wait "$pid" 2>/dev/null
 
 # 23. /reset survives --continue: pre-reset messages are not replayed
-rm -rf /tmp/max-state-reset
-printf 'first-one\n/reset\nsecond-two\n/quit\n' | run_mode normal ./max --repo . --state-dir /tmp/max-state-reset >/dev/null 2>&1
-grep -q '"ev":"reset"' /tmp/max-state-reset/sessions/*/journal.jsonl && echo "PASS reset journaled" || { echo "FAIL reset journaled"; FAIL=1; }
-run_mode normal ./max --repo . --state-dir /tmp/max-state-reset --continue "third" >/dev/null 2>&1
+rm -rf /tmp/idefix-state-reset
+printf 'first-one\n/reset\nsecond-two\n/quit\n' | run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-reset >/dev/null 2>&1
+grep -q '"ev":"reset"' /tmp/idefix-state-reset/sessions/*/journal.jsonl && echo "PASS reset journaled" || { echo "FAIL reset journaled"; FAIL=1; }
+run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-reset --continue "third" >/dev/null 2>&1
 grep "STUB users" /tmp/stub_normal.log | tail -1 | grep -q "first-one" && { echo "FAIL reset replay"; FAIL=1; } || echo "PASS reset replay"
 
 # 24. numeric flag validation: missing/garbage/negative values exit 64 cleanly
-out=$(./max --repo . --max-requests 2>&1); rc=$?
+out=$(./idefix --repo . --max-requests 2>&1); rc=$?
 check "missing value exit" 64 "$rc"
 echo "$out" | grep -q "missing value" && echo "PASS missing value msg" || { echo "FAIL missing value msg: $out"; FAIL=1; }
-./max --repo . --max-requests abc "task" >/dev/null 2>&1; check "bad integer exit" 64 "$?"
-./max --repo . --max-output-bytes -1 "task" >/dev/null 2>&1; check "negative value exit" 64 "$?"
-./max --repo . --temperature abc "task" >/dev/null 2>&1; check "bad float exit" 64 "$?"
-./max --repo . one two >/dev/null 2>&1; check "extra positional exit" 64 "$?"
+./idefix --repo . --max-requests abc "task" >/dev/null 2>&1; check "bad integer exit" 64 "$?"
+./idefix --repo . --max-output-bytes -1 "task" >/dev/null 2>&1; check "negative value exit" 64 "$?"
+./idefix --repo . --temperature abc "task" >/dev/null 2>&1; check "bad float exit" 64 "$?"
+./idefix --repo . one two >/dev/null 2>&1; check "extra positional exit" 64 "$?"
 
 # 25. signal-killed command reports 128+signo, not 0
-out=$(printf '!kill -9 $$\n/quit\n' | ./max --repo . --state-dir /tmp/max-state-sig 2>&1)
+out=$(printf '!kill -9 $$\n/quit\n' | ./idefix --repo . --state-dir /tmp/idefix-state-sig 2>&1)
 echo "$out" | grep -q "!exit 137" && echo "PASS signal exit 137" || { echo "FAIL signal exit"; echo "$out"; FAIL=1; }
 
 # 26. model tool name with a quote can't corrupt the wire JSON
-out=$(run_mode weirdname ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode weirdname ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "weirdname exit" 0 "$rc"
 check "weirdname answer" "Done." "$out"
 grep -q "STUB tool json ok: True" /tmp/stub_weirdname.log && echo "PASS weirdname json" || { echo "FAIL weirdname json"; cat /tmp/stub_weirdname.log; FAIL=1; }
 grep -q '"name":"weird' /tmp/stub_weirdname.log && echo "PASS weirdname name" || { echo "FAIL weirdname name"; FAIL=1; }
 
 # 27. --max-http-bytes caps the response body -> transport error -> exit 3
-out=$(run_mode normal ./max --repo . --max-http-bytes 10 --retries 0 "task" 2>/dev/null); rc=$?
+out=$(run_mode normal ./idefix --repo . --max-http-bytes 10 --retries 0 "task" 2>/dev/null); rc=$?
 check "http cap exit" 3 "$rc"
 
 # 28. session dir is private
-rm -rf /tmp/max-state-perms
-run_mode normal ./max --repo . --state-dir /tmp/max-state-perms "task" >/dev/null 2>&1
-check "session dir perms" "rwx------" "$(ls -ld /tmp/max-state-perms/sessions/*/ | cut -c2-10)"
+rm -rf /tmp/idefix-state-perms
+run_mode normal ./idefix --repo . --state-dir /tmp/idefix-state-perms "task" >/dev/null 2>&1
+check "session dir perms" "rwx------" "$(ls -ld /tmp/idefix-state-perms/sessions/*/ | cut -c2-10)"
 
 # 29. binout: invalid UTF-8 in tool output is sanitized, request still parses
-out=$(run_mode binout ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode binout ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "binout exit" 0 "$rc"
 check "binout answer" "Done." "$out"
 grep -q "STUB tool json ok: True" /tmp/stub_binout.log && echo "PASS binout json" || { echo "FAIL binout json"; cat /tmp/stub_binout.log; FAIL=1; }
 grep -q "$(printf '\357\277\275')" /tmp/stub_binout.log && echo "PASS binout sanitized" || { echo "FAIL binout sanitized"; FAIL=1; }
 
 # 30. unknown flags exit 64; -- gates a task starting with -
-out=$(./max --repo . --retriess 2>&1); rc=$?
+out=$(./idefix --repo . --retriess 2>&1); rc=$?
 check "unknown flag exit" 64 "$rc"
 echo "$out" | grep -q "unknown flag" && echo "PASS unknown flag msg" || { echo "FAIL unknown flag msg: $out"; FAIL=1; }
-out=$(run_mode normal ./max --repo . -- "-weird-task" 2>/dev/null); rc=$?
+out=$(run_mode normal ./idefix --repo . -- "-weird-task" 2>/dev/null); rc=$?
 check "dashdash task exit" 0 "$rc"
 check "dashdash answer" "Done." "$out"
 
 # 31. --max-requests counts retries: cap 1 + flaky 500 -> no retry, exit 3
-out=$(run_mode flaky ./max --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
+out=$(run_mode flaky ./idefix --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
 check "cap counts retries exit" 3 "$rc"
 
 # 32. --bare keeps v1 wire behavior: context 400 -> exit 3, never compacts
-out=$(run_mode ctxerr ./max --repo . --bare "task" 2>/dev/null); rc=$?
+out=$(run_mode ctxerr ./idefix --repo . --bare "task" 2>/dev/null); rc=$?
 check "bare ctxerr exit" 3 "$rc"
 grep -q "cleared; re-run" /tmp/stub_ctxerr.log && { echo "FAIL bare compacted"; FAIL=1; } || echo "PASS bare no compact"
 
 # 33. --bare rejects session/notify flags instead of silently dropping them
-./max --repo . --bare --continue "task" >/dev/null 2>&1; check "bare continue exit" 64 "$?"
-./max --repo . --bare --resume /tmp/max-res.jsonl "task" >/dev/null 2>&1; check "bare resume exit" 64 "$?"
-./max --repo . --bare --notify true "task" >/dev/null 2>&1; check "bare notify exit" 64 "$?"
+./idefix --repo . --bare --continue "task" >/dev/null 2>&1; check "bare continue exit" 64 "$?"
+./idefix --repo . --bare --resume /tmp/idefix-res.jsonl "task" >/dev/null 2>&1; check "bare resume exit" 64 "$?"
+./idefix --repo . --bare --notify true "task" >/dev/null 2>&1; check "bare notify exit" 64 "$?"
 
 # 34. --repo must be a directory; unusable state dir warns but runs
-out=$(./max --repo ./README.md "task" 2>&1); rc=$?
+out=$(./idefix --repo ./README.md "task" 2>&1); rc=$?
 check "repo file exit" 64 "$rc"
 echo "$out" | grep -q "not a directory" && echo "PASS repo file msg" || { echo "FAIL repo file msg: $out"; FAIL=1; }
-touch /tmp/max-statefile
-out=$(run_mode normal ./max --repo . --state-dir /tmp/max-statefile "task" 2>&1 >/dev/null); rc=$?
+touch /tmp/idefix-statefile
+out=$(run_mode normal ./idefix --repo . --state-dir /tmp/idefix-statefile "task" 2>&1 >/dev/null); rc=$?
 check "state-dir fail runs" 0 "$rc"
 echo "$out" | grep -q "journal/status off" && echo "PASS state-dir fail note" || { echo "FAIL state-dir fail note: $out"; FAIL=1; }
-rm -f /tmp/max-statefile
+rm -f /tmp/idefix-statefile
 
 # 35. chunked response has no Content-Length: --max-http-bytes still caps it
-out=$(run_mode chunked ./max --repo . --max-http-bytes 1024 --retries 0 "task" 2>&1); rc=$?
+out=$(run_mode chunked ./idefix --repo . --max-http-bytes 1024 --retries 0 "task" 2>&1); rc=$?
 check "chunked cap exit" 3 "$rc"
 echo "$out" | grep -q "exceeds --max-http-bytes" && echo "PASS chunked cap msg" || { echo "FAIL chunked cap msg: $out"; FAIL=1; }
 
 # 36. env scrub: model commands see no credential-named vars, others pass through
 rm -f /tmp/stub_envdump.log
-out=$(run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible ./max --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "envdump exit" 0 "$rc"
 grep -q "KEEP_ME_PLAIN=visible" /tmp/stub_envdump.log && echo "PASS env plain kept" || { echo "FAIL env plain kept"; cat /tmp/stub_envdump.log; FAIL=1; }
 grep -q "sekrit-xy\|MAX_API_KEY" /tmp/stub_envdump.log && { echo "FAIL env leaked credential"; FAIL=1; } || echo "PASS env scrubbed"
 grep -q "sk-lower\|api_key" /tmp/stub_envdump.log && { echo "FAIL env leaked lowercase credential"; FAIL=1; } || echo "PASS env scrubbed lowercase"
 
 # 37. changed_files: tool result lists files the command actually changed
-rm -f /tmp/max_cf.json /tmp/max_cf_bare.json cf-out.txt
-run_mode cfdiff ./max --repo . --transcript /tmp/max_cf.json "task" >/dev/null 2>&1
-python3 -c "import json;d=json.load(open('/tmp/max_cf.json'));t=[m for m in d if m['role']=='tool'];assert 'cf-out.txt' in t[0]['content'],t[0]" && echo "PASS changed_files reported" || { echo "FAIL changed_files reported"; FAIL=1; }
-run_mode cfdiff ./max --bare --repo . --transcript /tmp/max_cf_bare.json "task" >/dev/null 2>&1
-python3 -c "import json;d=json.load(open('/tmp/max_cf_bare.json'));assert 'changed_files' not in json.dumps(d)" && echo "PASS bare omits changed_files" || { echo "FAIL bare omits changed_files"; FAIL=1; }
+rm -f /tmp/idefix_cf.json /tmp/idefix_cf_bare.json cf-out.txt
+run_mode cfdiff ./idefix --repo . --transcript /tmp/idefix_cf.json "task" >/dev/null 2>&1
+python3 -c "import json;d=json.load(open('/tmp/idefix_cf.json'));t=[m for m in d if m['role']=='tool'];assert 'cf-out.txt' in t[0]['content'],t[0]" && echo "PASS changed_files reported" || { echo "FAIL changed_files reported"; FAIL=1; }
+run_mode cfdiff ./idefix --bare --repo . --transcript /tmp/idefix_cf_bare.json "task" >/dev/null 2>&1
+python3 -c "import json;d=json.load(open('/tmp/idefix_cf_bare.json'));assert 'changed_files' not in json.dumps(d)" && echo "PASS bare omits changed_files" || { echo "FAIL bare omits changed_files"; FAIL=1; }
 rm -f cf-out.txt
 
 exit $FAIL

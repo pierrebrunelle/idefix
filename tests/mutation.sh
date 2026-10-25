@@ -12,16 +12,16 @@ cd "$(dirname "$0")/.."
 MOJO="${MOJO:-/Users/pjlb/mojo-agent-spike/.venv/bin/mojo}"
 export MAX_BASE_URL="http://127.0.0.1:18923/v1"
 export MAX_MODEL="${MAX_MODEL:-test-model}"
-export MAX_STATE_DIR=/tmp/max-mutation-state   # keep probes out of real $HOME
+export MAX_STATE_DIR=/tmp/idefix-mutation-state   # keep probes out of real $HOME
 
 RESULT=0
 
 kill_stub() { lsof -ti:18923 2>/dev/null | xargs kill -9 2>/dev/null || true; }
 
 cleanup() {
-    cp /tmp/max-mut-max.mojo max.mojo 2>/dev/null || true
-    cp /tmp/max-mut-max_shim.c max_shim.c 2>/dev/null || true
-    cp /tmp/max-mut-bindings.mojo bindings.mojo 2>/dev/null || true
+    cp /tmp/idefix-mut-idefix.mojo idefix.mojo 2>/dev/null || true
+    cp /tmp/idefix-mut-max_shim.c max_shim.c 2>/dev/null || true
+    cp /tmp/idefix-mut-bindings.mojo bindings.mojo 2>/dev/null || true
     rm -f pwned.txt 'x$(touch pwned.txt)'
     pkill -f "sleep 29" 2>/dev/null || true
     kill_stub
@@ -52,32 +52,32 @@ build() {
 kill_stub
 
 # pristine copies; cleanup() restores from these even on early exit
-cp max.mojo /tmp/max-mut-max.mojo
-cp max_shim.c /tmp/max-mut-max_shim.c
-cp bindings.mojo /tmp/max-mut-bindings.mojo
+cp idefix.mojo /tmp/idefix-mut-idefix.mojo
+cp max_shim.c /tmp/idefix-mut-max_shim.c
+cp bindings.mojo /tmp/idefix-mut-bindings.mojo
 
 # a. looks_write: make '>' in 2>&1 count as a write -> false noop warning
 echo "== a. looks_write fd-dup rule (nxt != 0x26 -> 0x21)"
-sed -i.bak 's/and nxt != 0x26:/and nxt != 0x21:/' max.mojo && rm -f max.mojo.bak
-grep -q 'nxt != 0x21' max.mojo || { echo "edit did not apply" >&2; exit 1; }
+sed -i.bak 's/and nxt != 0x26:/and nxt != 0x21:/' idefix.mojo && rm -f idefix.mojo.bak
+grep -q 'nxt != 0x21' idefix.mojo || { echo "edit did not apply" >&2; exit 1; }
 build
 rm -f /tmp/stub_redirnoop.log
-run_mode redirnoop ./max --repo . "task"
+run_mode redirnoop ./idefix --repo . "task"
 grep -q "may not have applied" /tmp/stub_redirnoop.log && obs=FAIL || obs=PASS
-cp /tmp/max-mut-max.mojo max.mojo
-report "max.mojo looks_write nxt!=0x26->0x21" "redirnoop" "$obs"
+cp /tmp/idefix-mut-idefix.mojo idefix.mojo
+report "idefix.mojo looks_write nxt!=0x26->0x21" "redirnoop" "$obs"
 
 # b. diff-echo: interpolate changed filenames unquoted -> pwned.txt executes
 echo "== b. diff-echo filename quoting (unquoted fname)"
-sed -i.bak 's|qf += .*|qf += fname + " "|' max.mojo && rm -f max.mojo.bak
-grep -q 'qf += fname + " "' max.mojo || { echo "edit did not apply" >&2; exit 1; }
+sed -i.bak 's|qf += .*|qf += fname + " "|' idefix.mojo && rm -f idefix.mojo.bak
+grep -q 'qf += fname + " "' idefix.mojo || { echo "edit did not apply" >&2; exit 1; }
 build
 rm -f pwned.txt 'x$(touch pwned.txt)'
-run_mode injname ./max --repo . "task"
+run_mode injname ./idefix --repo . "task"
 [ -f pwned.txt ] && obs=FAIL || obs=PASS
 rm -f pwned.txt 'x$(touch pwned.txt)'
-cp /tmp/max-mut-max.mojo max.mojo
-report "max.mojo diff-echo unquoted fname" "injname" "$obs"
+cp /tmp/idefix-mut-idefix.mojo idefix.mojo
+report "idefix.mojo diff-echo unquoted fname" "injname" "$obs"
 
 # c. env scrub: drop the 'key' name marker -> api_key leaks into env dump
 echo "== c. shim_scrubbed_env pattern (key -> zzz)"
@@ -86,9 +86,9 @@ grep -q '"zzz"' max_shim.c || { echo "edit did not apply" >&2; exit 1; }
 build
 rm -f /tmp/stub_envdump.log
 run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible \
-    ./max --repo . "task"
+    ./idefix --repo . "task"
 grep -q 'sk-lower\|api_key' /tmp/stub_envdump.log && obs=FAIL || obs=PASS
-cp /tmp/max-mut-max_shim.c max_shim.c
+cp /tmp/idefix-mut-max_shim.c max_shim.c
 report "max_shim.c scrub key->zzz" "envdump" "$obs"
 
 # d. detached-grandchild killpg: skip the group kill after normal
@@ -98,11 +98,11 @@ sed -i.bak 's/elif not timed_out:/elif timed_out:/' bindings.mojo && rm -f bindi
 grep -q 'elif timed_out:' bindings.mojo || { echo "edit did not apply" >&2; exit 1; }
 build
 pkill -f "sleep 29" 2>/dev/null || true
-run_mode detach ./max --repo . "task"
+run_mode detach ./idefix --repo . "task"
 sleep 1
 pgrep -f "sleep 29" >/dev/null && obs=FAIL || obs=PASS
 pkill -f "sleep 29" 2>/dev/null || true
-cp /tmp/max-mut-bindings.mojo bindings.mojo
+cp /tmp/idefix-mut-bindings.mojo bindings.mojo
 report "bindings.mojo killpg guard inverted" "detach" "$obs"
 
 echo "== restoring clean binary"
