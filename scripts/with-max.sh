@@ -35,7 +35,7 @@ if [ -z "$MAXCLI" ]; then
 $(type -aP max 2>/dev/null)
 EOF
 fi
-export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
+USER_MODEL="${MAX_MODEL:-}"   # an explicit choice beats whatever is served
 BASE="${MAX_BASE_URL:-http://127.0.0.1:8000/v1}"
 
 # Server up? Sends MAX_API_KEY when set so authenticated endpoints probe true.
@@ -47,9 +47,31 @@ up() {
     fi
 }
 
+# "id" fields from GET /models, one per line; sed so jq stays optional.
+served_ids() {
+    if [ -n "${MAX_API_KEY:-}" ]; then
+        curl -sf -m 2 -H "Authorization: Bearer $MAX_API_KEY" "$BASE/models"
+    else
+        curl -sf -m 2 "$BASE/models"
+    fi | tr ',' '\n' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
+}
+
 started=""
 LOG=""
-if ! up; then
+if up; then
+    ids="$(served_ids || true)"
+    if [ -z "$USER_MODEL" ]; then
+        # no model requested: take whatever the answering server serves
+        export MAX_MODEL="$(printf '%s\n' "$ids" | head -1)"
+        export MAX_MODEL="${MAX_MODEL:-Qwen/Qwen3-1.7B}"
+    else
+        export MAX_MODEL="$USER_MODEL"
+        if [ -n "$ids" ] && ! printf '%s\n' "$ids" | grep -qx "$MAX_MODEL"; then
+            echo "with-max: warning: $BASE serves [$(printf '%s ' $ids)] not MAX_MODEL=$MAX_MODEL" >&2
+        fi
+    fi
+else
+    export MAX_MODEL="${USER_MODEL:-Qwen/Qwen3-1.7B}"
     if [ -z "$MAXCLI" ]; then
         echo "with-max: no server at $BASE and no model-server CLI on PATH; set MAXCLI=/path/to/modular-max or start a server" >&2
         exit 1
