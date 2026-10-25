@@ -260,6 +260,11 @@ def strip_think(content: String) -> String:
     while True:
         var a = out.find("<think>")
         if a < 0:
+            # think-off servers may leak an orphan close tag; the answer
+            # is whatever follows it
+            var c = out.find("</think>")
+            if c >= 0:
+                return String(out[byte= c + 8 :])
             return out
         var b = out.find("</think>")
         if b < 0:

@@ -6,7 +6,7 @@ Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | m
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
        | flood | many | markup | think | finalans | stall | detach | writefinal
-       | resultloop
+       | resultloop | reasoning | thinkleak
 """
 import json
 import os
@@ -34,8 +34,10 @@ def tool_call(call_id, command):
     }
 
 
-def msg_response(content=None, calls=None, finish="stop", usage=None):
+def msg_response(content=None, calls=None, finish="stop", usage=None, reasoning=None):
     m = {"role": "assistant", "content": content}
+    if reasoning is not None:
+        m["reasoning"] = reasoning
     if calls is not None:
         m["tool_calls"] = calls
     return {
@@ -260,6 +262,13 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif MODE == "finalans":
                 resp = msg_response(content="Done.")
+            elif MODE == "reasoning":
+                # thinking-mode server shape: answer lives in `reasoning`,
+                # content empty -> the fallback must surface it
+                resp = msg_response(
+                    content="", reasoning="Reasoned answer.")
+            elif MODE == "thinkleak":
+                resp = msg_response(content="</think>Leaked answer.")
             elif MODE == "detach":
                 resp = msg_response(
                     calls=[tool_call("call_d", "(sleep 29 &); exit 0")],

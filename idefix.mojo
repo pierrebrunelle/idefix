@@ -682,6 +682,16 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
         var content = bindings.strip_think(
             bindings.cjson_str(bindings.cjson_get(msg, "content"))
         )
+        if content == "":
+            # thinking-mode servers (ollama et al.) put the answer in a
+            # separate reasoning field and leave content empty
+            content = bindings.strip_think(
+                bindings.cjson_str(bindings.cjson_get(msg, "reasoning"))
+            )
+        if content == "":
+            content = bindings.strip_think(
+                bindings.cjson_str(bindings.cjson_get(msg, "reasoning_content"))
+            )
         var msg_owner = bindings.raw_ptr()
         var asst = String("")
         if not (calls and bindings.cjson_len(calls) > 0):

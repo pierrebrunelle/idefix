@@ -140,6 +140,15 @@ out=$(run_mode resultloop ./idefix --repo . --max-requests 8 "task" 2>/dev/null)
 check "digest off exit" 2 "$rc"
 grep -q "same outcome" /tmp/stub_resultloop.log && { echo "FAIL digest off"; FAIL=1; } || echo "PASS digest off"
 
+# 13reason. thinking-mode servers answer in `reasoning` with empty content;
+# a stray orphan </think> should be stripped too
+out=$(run_mode reasoning ./idefix --repo . "task" 2>/dev/null); rc=$?
+check "reasoning exit" 0 "$rc"
+check "reasoning fallback" "Reasoned answer." "$out"
+out=$(run_mode thinkleak ./idefix --repo . "task" 2>/dev/null); rc=$?
+check "thinkleak exit" 0 "$rc"
+check "thinkleak stripped" "Leaked answer." "$out"
+
 # 13b. wall deadline stops a runaway loop and clamps command timeout
 start=$(python3 -c 'import time;print(time.time())')
 out=$(run_mode loop ./idefix --repo . --max-seconds 1 --no-loop-guard "task" 2>/dev/null); rc=$?
