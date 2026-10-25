@@ -129,6 +129,27 @@ check "nogate exit" 0 "$rc"
 check "nogate no re-ask" 1 "$(grep -c 'STUB pairing' /tmp/stub_writefinal.log)"
 rm -f gate-wrote.txt
 
+# 13gate2. --done-gate2: a second write-then-done attempt earns an evidence
+# nudge (4 pairing requests); --done-gate still stops at one nudge; --bare
+# keeps the gate off entirely
+out=$(run_mode writefinal2 ./idefix --repo . --done-gate2 "task" 2>/dev/null); rc=$?
+check "gate2 exit" 0 "$rc"
+check "gate2 answer" "Done." "$out"
+check "gate2 re-asked twice" 4 "$(grep -c 'STUB pairing' /tmp/stub_writefinal2.log)"
+grep -qF 'Commands since your last write: `echo more >> gate2-wrote.txt` (exit 0)' /tmp/stub_writefinal2.log && echo "PASS gate2 evidence echo" || { echo "FAIL gate2 evidence echo"; cat /tmp/stub_writefinal2.log; FAIL=1; }
+rm -f gate2-wrote.txt
+
+out=$(run_mode writefinal2 ./idefix --repo . --done-gate "task" 2>/dev/null); rc=$?
+check "gate1-on-writefinal2 exit" 0 "$rc"
+check "gate1 still one nudge" 3 "$(grep -c 'STUB pairing' /tmp/stub_writefinal2.log)"
+grep -q "Commands since your last write" /tmp/stub_writefinal2.log && { echo "FAIL gate1 fired strike2"; FAIL=1; } || echo "PASS gate1 no strike2"
+rm -f gate2-wrote.txt
+
+out=$(run_mode writefinal2 ./idefix --repo . --bare --done-gate2 "task" 2>/dev/null); rc=$?
+check "gate2 bare exit" 0 "$rc"
+check "gate2 bare no nudge" 1 "$(grep -c 'STUB pairing' /tmp/stub_writefinal2.log)"
+rm -f gate2-wrote.txt
+
 # 13digest. --loop-digest: identical outcomes from varying commands get a
 # result-kind loop_warning; off by default
 out=$(run_mode resultloop ./idefix --repo . --max-requests 8 --loop-digest "task" 2>/dev/null); rc=$?
