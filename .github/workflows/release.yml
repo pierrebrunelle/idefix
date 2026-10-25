@@ -44,6 +44,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
       - name: Generate checksums
         # One checksums.txt covering both tarballs; bare basenames so the
@@ -53,6 +54,11 @@ jobs:
             (cd "$d" && shasum -a 256 *.tar.gz)
           done > checksums.txt
           cat checksums.txt
+      - name: Stage installer as a release asset
+        # ships as install.sh so the curl|sh URL is
+        # releases/latest/download/install.sh — pinned to the release,
+        # never drifting with main.
+        run: cp scripts/install-remote.sh install.sh
       - name: Attach binaries to release
         uses: softprops/action-gh-release@v2
         with:
@@ -60,3 +66,4 @@ jobs:
             idefix-darwin-arm64/idefix-darwin-arm64.tar.gz
             idefix-linux-x86_64/idefix-linux-x86_64.tar.gz
             checksums.txt
+            install.sh

@@ -1,6 +1,6 @@
 #!/bin/bash
 # install-remote.sh: curl installer for the idefix agent bundle.
-# Usage: curl -fsSL https://raw.githubusercontent.com/pierrebrunelle/idefix/main/scripts/install-remote.sh | bash
+# Usage: curl -fsSL https://github.com/pierrebrunelle/idefix/releases/latest/download/install.sh | bash
 #
 # Downloads the latest release bundle (binary + runtime dylibs + with-max)
 # for this OS/arch into ~/.local/{idefix,bin}, reproducing install.sh's

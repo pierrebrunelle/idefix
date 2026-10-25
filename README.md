@@ -5,8 +5,7 @@
 **A tiny native coding agent for local models. One tool: `bash`. One loop.**
 
 ```bash
-git clone https://github.com/pierrebrunelle/idefix.git
-cd idefix && ./install.sh
+curl -fsSL https://github.com/pierrebrunelle/idefix/releases/latest/download/install.sh | bash
 idefix "fix the parser bug and re-run the tests"
 ```
 
@@ -69,10 +68,12 @@ Three steps:
 # 1. Get a model server once (Modular's CLI doubles as ours)
 pip install modular        # or: pipx install modular
 
-# 2. Install the agent
-git clone https://github.com/pierrebrunelle/idefix.git
-cd idefix && ./install.sh
+# 2. Install the agent — from the latest release (no toolchain needed)
+curl -fsSL https://github.com/pierrebrunelle/idefix/releases/latest/download/install.sh | bash
 idefix --version           # -> "idefix 0.x"
+
+#    or build from source (needs mojo on PATH):
+git clone https://github.com/pierrebrunelle/idefix.git && cd idefix && ./install.sh
 
 # 3. Use it, from inside any project
 cd my-project
