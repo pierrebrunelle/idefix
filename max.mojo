@@ -24,6 +24,7 @@ comptime SYSTEM_SUFFIX = """
 
 
 comptime TOOLS = '{"type":"function","function":{"name":"bash","description":"Run a bash command in the repository directory. Returns exit code and bounded merged stdout/stderr output.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"The bash command to run"}},"required":["command"],"additionalProperties":false}}}'
+comptime VERSION = "0.1.0"
 
 
 struct Config(Copyable):
@@ -92,7 +93,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: max --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, MAX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $MAX_STATE_DIR | $HOME/.max; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -208,6 +209,9 @@ def parse_args() raises -> Config:
             cfg.sandbox = True
         elif arg == "-h" or arg == "--help":
             print(usage())
+            _ = external_call["exit", c_int](c_int(0))
+        elif arg == "--version":
+            print("max " + VERSION)
             _ = external_call["exit", c_int](c_int(0))
         elif arg == "--":
             i += 1
@@ -336,6 +340,17 @@ def looks_write(cmd: String) -> Bool:
         if prev != 0x26 and prev != 0x2D and prev != 0x3D and nxt != 0x3D and nxt != 0x26:
             return True
     return False
+
+
+def housekeeping_ms(deadline: Int, cap: Int) -> Int:
+    # housekeeping commands (snapshot/diff/cleanup/notify) share the
+    # task deadline instead of running their full fixed timeout
+    var ms = Int((deadline - bindings.now_seconds()) * 1000)
+    if ms > cap:
+        return cap
+    if ms < 1000:
+        return 1000
+    return ms
 
 
 def sandbox_profile(repo: String, tmp: String) -> String:
@@ -553,7 +568,10 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             st.requests += 1
             code = r[0]
             resp = r[1]
-        if code == 0 and bindings.now_seconds() > deadline:
+        if code == 0 and (
+            bindings.now_seconds() > deadline or resp.find("CURL_ERROR:28") >= 0
+        ):
+            # 28 is our own req_ms timeout clamp, which is deadline-derived
             bindings.eprint("[max] --max-seconds exceeded")
             exit_code = 2
             break
@@ -726,7 +744,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                             + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
                                             + " 2>/dev/null | sort > " + mark
                                         )
-                                        _ = bindings.run_capture(snap, cfg.repo, 64, 30000, False)
+                                        _ = bindings.run_capture(snap, cfg.repo, 64, housekeeping_ms(deadline, 30000), False)
                                         tree = "/tmp/max-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                         var cr = bindings.run_capture(
                                             "rm -rf " + tree + "; cp -Rc . " + tree,
@@ -792,10 +810,13 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         + " | sort > " + mark + ".after; "
                                         + "{ comm -13 " + mark + " " + mark + ".after; "
                                         + "comm -23 " + mark + " " + mark + ".after; }"
-                                        + " | cut -d' ' -f2- | sort -u | head -40"
+                                        # md5sum separates with two spaces; sed
+                                        # strips field 1 plus all spacing so the
+                                        # filename survives on both hashers
+                                        + " | sed 's/^[^ ]* *//' | sort -u | head -40"
                                     )
                                     var fr = bindings.run_capture(
-                                        dcmd, cfg.repo, 4096, 30000, False
+                                        dcmd, cfg.repo, 4096, housekeeping_ms(deadline, 30000), False
                                     )
                                     if fr[1] == 0:
                                         var cf = String(fr[0].strip())
@@ -820,7 +841,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                                 + " 2>/dev/null; done | head -120"
                                             )
                                             var dr = bindings.run_capture(
-                                                d2, cfg.repo, 8192, 15000, False
+                                                d2, cfg.repo, 8192, housekeeping_ms(deadline, 15000), False
                                             )
                                             var dtxt = String(dr[0].strip())
                                             if dtxt != "":
@@ -841,7 +862,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     if clone_ok:
                                         cl += "; rm -rf '" + tree + "'"
                                     _ = bindings.run_capture(
-                                        cl, cfg.repo, 64, 30000, False
+                                        cl, cfg.repo, 64, housekeeping_ms(deadline, 30000), False
                                     )
                                 result += "}"
                         bindings.cjson_del(aj)
@@ -1049,8 +1070,11 @@ def run_edit(path: String) raises -> Int:
 def main() raises:
     _ = external_call["shim_install_signal_handlers", c_int]()
     var a0 = argv()
-    if len(a0) == 3 and String(a0[1]) == "edit":
-        external_call["exit", c_int](c_int(run_edit(String(a0[2]))))
+    if len(a0) >= 2 and String(a0[1]) == "edit":
+        if len(a0) == 3:
+            external_call["exit", c_int](c_int(run_edit(String(a0[2]))))
+        bindings.eprint("usage: max edit FILE   (reads SEARCH/REPLACE blocks on stdin)")
+        external_call["exit", c_int](c_int(64))
     var cfg = parse_args()
     var st = TurnStats()
     st.start_s = bindings.now_seconds()

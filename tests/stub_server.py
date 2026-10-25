@@ -5,10 +5,12 @@ Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | medit | ediff
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
+       | flood | many | markup | think | finalans | stall
 """
 import json
 import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 MODE = sys.argv[2] if len(sys.argv) > 2 else "normal"
@@ -90,6 +92,11 @@ class Handler(BaseHTTPRequestHandler):
         if MODE == "ctxbig" and n_tool > 0 and not STATE["fired"]:
             STATE["fired"] = True
             reply(self, 400, {"error": {"message": "Context Window Exceeded"}})
+            return
+        if MODE == "stall":
+            # never answers inside a --max-seconds window; client must time out
+            time.sleep(30)
+            reply(self, 200, msg_response(content="too late"))
             return
         if MODE == "loop":
             reply(
@@ -209,6 +216,32 @@ class Handler(BaseHTTPRequestHandler):
                     calls=[tool_call("call_r", "echo hi 2>&1 | tail -1")],
                     finish="tool_calls",
                 )
+            elif MODE == "flood":
+                resp = msg_response(
+                    calls=[tool_call("call_f", "seq 1 30000")],
+                    finish="tool_calls",
+                )
+            elif MODE == "many":
+                resp = msg_response(
+                    calls=[
+                        tool_call("call_m%d" % i, "echo m%d" % i)
+                        for i in range(10)
+                    ],
+                    finish="tool_calls",
+                )
+            elif MODE == "markup":
+                # well-formed hermes markup in content, no tool_calls field:
+                # the client should rescue it into a real call
+                resp = msg_response(
+                    content='<tool_call>{"name":"bash","arguments":'
+                    '{"command":"echo markup-ok"}}</tool_call>'
+                )
+            elif MODE == "think":
+                resp = msg_response(
+                    content="<think>internal reasoning</think>Done."
+                )
+            elif MODE == "finalans":
+                resp = msg_response(content="Done.")
             elif MODE == "medit":
                 resp = msg_response(
                     calls=[tool_call(

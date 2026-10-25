@@ -155,7 +155,54 @@ check "badmarkup exit" 0 "$rc"
 check "badmarkup recovered" "Done." "$out"
 grep -q "could not be parsed" /tmp/stub_badmarkup.log && echo "PASS badmarkup nudge" || { echo "FAIL badmarkup nudge"; cat /tmp/stub_badmarkup.log; FAIL=1; }
 
-# 13i. with-max.sh: server already answering -> runs task, never serves
+# 13i. markup: well-formed <tool_call> markup is rescued and executed
+out=$(run_mode markup ./max --repo . "task" 2>/dev/null); rc=$?
+check "markup exit" 0 "$rc"
+grep -q "markup-ok" /tmp/stub_markup.log && echo "PASS markup rescued" || { echo "FAIL markup rescued"; cat /tmp/stub_markup.log; FAIL=1; }
+
+# 13j. think: <think> block stripped from the final answer
+out=$(run_mode think ./max --repo . "task" 2>/dev/null); rc=$?
+check "think exit" 0 "$rc"
+check "think final" "Done." "$out"
+
+# 13k. flood: --max-output-bytes caps output and counts the discard
+out=$(run_mode flood ./max --repo . --max-output-bytes 1000 "task" 2>/dev/null); rc=$?
+check "flood exit" 0 "$rc"
+grep -q '"discarded_bytes":[1-9]' /tmp/stub_flood.log && echo "PASS flood discarded" || { echo "FAIL flood discarded"; cat /tmp/stub_flood.log; FAIL=1; }
+
+# 13l. many: tool_calls over the cap get a limit error, never run
+out=$(run_mode many ./max --repo . --max-calls-per-response 3 "task" 2>/dev/null); rc=$?
+check "many exit" 0 "$rc"
+grep -q "call limit reached" /tmp/stub_many.log && echo "PASS call cap" || { echo "FAIL call cap"; cat /tmp/stub_many.log; FAIL=1; }
+
+# 13m. stall: --max-seconds kills a stalled request
+out=$(run_mode stall ./max --repo . --max-seconds 3 "task" 2>/dev/null); rc=$?
+check "stall exit" 2 "$rc"
+
+# 13n. REPL: --max-requests is per turn, not per session
+out=$(printf 'a\nb\n/quit\n' | run_mode finalans ./max --repo . --max-requests 1 2>/dev/null); rc=$?
+check "repl exit" 0 "$rc"
+[ "$(echo "$out" | grep -c 'Done.')" = "2" ] && echo "PASS repl per-turn budget" || { echo "FAIL repl per-turn budget: $out"; FAIL=1; }
+
+# 13o. max edit failure contract: loud rc1, file untouched
+printf 'x = 1\n' > e.py
+printf '<<<<<<< SEARCH\nnope\n=======\nx = 2\n>>>>>>> REPLACE\n' | ./max edit e.py >/dev/null 2>&1; rc=$?
+check "edit nomatch exit" 1 "$rc"
+grep -q "x = 1" e.py && ! grep -q "x = 2" e.py && echo "PASS edit nomatch unchanged" || { echo "FAIL edit nomatch"; FAIL=1; }
+printf 'x = 1\n' > e.py
+printf '<<<<<<< SEARCH\nx = 1\n=======\nx = (\n>>>>>>> REPLACE\n' | ./max edit e.py >/dev/null 2>&1; rc=$?
+check "edit badpy exit" 1 "$rc"
+grep -q "x = 1" e.py && echo "PASS edit badpy unchanged" || { echo "FAIL edit badpy"; FAIL=1; }
+rm -f e.py __pycache__ -r
+
+# 13p. --version and bare `max edit` (no FILE) exit clean, no server touched
+out=$(./max --version); rc=$?
+check "version exit" 0 "$rc"
+echo "$out" | grep -q "^max 0" && echo "PASS version" || { echo "FAIL version: $out"; FAIL=1; }
+./max edit </dev/null >/dev/null 2>&1; rc=$?
+check "bare edit exit" 64 "$rc"
+
+# 13q. with-max.sh: server already answering -> runs task, never serves
 out=$(run_mode normal env MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
 check "with-max exit" 0 "$rc"
 check "with-max answer" "Done." "$out"
