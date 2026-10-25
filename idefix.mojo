@@ -93,7 +93,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: MAX_BASE_URL (default http://127.0.0.1:8000/v1), MAX_MODEL (required), MAX_API_KEY, IDEFIX_STATE_DIR\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -116,6 +116,13 @@ def read_file(path: String) raises -> String:
     )
     _ = external_call["fclose", c_int](fp)
     return String(unsafe_from_utf8=buf^)
+
+
+def env2(primary: String, legacy: String) -> String:
+    var v = getenv(primary)
+    if v == "":
+        v = getenv(legacy)
+    return v
 
 
 def die(msg: String, code: Int):
@@ -228,13 +235,13 @@ def parse_args() raises -> Config:
     if len(positional) == 1:
         cfg.task = positional[0]
     # no TASK -> REPL mode (validated after env checks)
-    var env_base = getenv("MAX_BASE_URL")
+    var env_base = env2("IDEFIX_BASE_URL", "MAX_BASE_URL")
     if env_base != "":
         cfg.base_url = env_base
-    cfg.model = getenv("MAX_MODEL")
+    cfg.model = env2("IDEFIX_MODEL", "MAX_MODEL")
     if cfg.model == "":
-        die("MAX_MODEL is not set. " + usage(), 64)
-    cfg.bearer = getenv("MAX_API_KEY")
+        die("IDEFIX_MODEL is not set. " + usage(), 64)
+    cfg.bearer = env2("IDEFIX_API_KEY", "MAX_API_KEY")
     cfg.bindir = bindings.self_dir()
     var acc = cfg.repo
     var accrc = external_call["access", c_int](acc.as_c_string_span().ptr(), c_int(0))

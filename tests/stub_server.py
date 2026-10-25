@@ -57,7 +57,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.endswith("/models"):
             body = json.dumps(
-                {"data": [{"id": os.environ.get("MAX_MODEL", "test-model")}]}
+                {"data": [{"id": os.environ.get("IDEFIX_MODEL", os.environ.get("MAX_MODEL", "test-model"))}]}
             ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

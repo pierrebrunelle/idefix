@@ -1,9 +1,9 @@
 #!/bin/bash
-# Trouble-path tests against the stub. Requires ./idefix built and MAX_MODEL set.
+# Trouble-path tests against the stub. Requires ./idefix built and IDEFIX_MODEL set.
 set -u
 cd "$(dirname "$0")/.."
-export MAX_BASE_URL="http://127.0.0.1:18923/v1"
-export MAX_MODEL="${MAX_MODEL:-test-model}"
+export IDEFIX_BASE_URL="http://127.0.0.1:18923/v1"
+export IDEFIX_MODEL="${IDEFIX_MODEL:-test-model}"
 export IDEFIX_STATE_DIR=/tmp/idefix-test-state   # keep tests out of real $HOME
 FAIL=0
 
@@ -232,19 +232,24 @@ check "resumecut exit" 0 "$rc"
 check "resumecut answer" "Done." "$out"
 rm -f "$jf"
 
-# 13u. misc one-liners: MAX_MODEL required, nan temp, /exit alias
-out=$(env -u MAX_MODEL MAX_BASE_URL=http://127.0.0.1:1/v1 ./idefix --repo . "task" 2>&1); rc=$?
+# 13u. misc one-liners: IDEFIX_MODEL required, nan temp, /exit alias
+out=$(env -u IDEFIX_MODEL -u MAX_MODEL IDEFIX_BASE_URL=http://127.0.0.1:1/v1 ./idefix --repo . "task" 2>&1); rc=$?
 check "modelreq exit" 64 "$rc"
-MAX_BASE_URL=http://127.0.0.1:1/v1 MAX_MODEL=test ./idefix --repo . --temperature nan "task" >/dev/null 2>&1; rc=$?
+IDEFIX_BASE_URL=http://127.0.0.1:1/v1 IDEFIX_MODEL=test ./idefix --repo . --temperature nan "task" >/dev/null 2>&1; rc=$?
 check "nantemp exit" 64 "$rc"
 out=$(printf 'a\n/exit\n' | run_mode finalans ./idefix --repo . 2>/dev/null); rc=$?
 check "exitalias exit" 0 "$rc"
 [ "$(echo "$out" | grep -c 'Done.')" = "1" ] && echo "PASS /exit alias" || { echo "FAIL /exit alias: $out"; FAIL=1; }
 
 # 13v. with-max.sh: server already answering -> runs task, never serves
-out=$(run_mode normal env MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode normal env IDEFIX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
 check "with-max exit" 0 "$rc"
 check "with-max answer" "Done." "$out"
+
+# 13w. legacy MAX_* env vars still work as fallbacks
+out=$(run_mode normal env -u IDEFIX_MODEL MAX_MODEL=test-model bash scripts/with-max.sh --repo . "task" 2>/dev/null); rc=$?
+check "legacy-env exit" 0 "$rc"
+check "legacy-env answer" "Done." "$out"
 
 # 13d. sandbox (macOS seatbelt): writes outside repo denied, inside allowed
 if command -v sandbox-exec >/dev/null 2>&1; then
@@ -404,10 +409,10 @@ echo "$out" | grep -q "exceeds --max-http-bytes" && echo "PASS chunked cap msg" 
 
 # 36. env scrub: model commands see no credential-named vars, others pass through
 rm -f /tmp/stub_envdump.log
-out=$(run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible ./idefix --repo . "task" 2>/dev/null); rc=$?
+out=$(run_mode envdump env IDEFIX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "envdump exit" 0 "$rc"
 grep -q "KEEP_ME_PLAIN=visible" /tmp/stub_envdump.log && echo "PASS env plain kept" || { echo "FAIL env plain kept"; cat /tmp/stub_envdump.log; FAIL=1; }
-grep -q "sekrit-xy\|MAX_API_KEY" /tmp/stub_envdump.log && { echo "FAIL env leaked credential"; FAIL=1; } || echo "PASS env scrubbed"
+grep -q "sekrit-xy\|IDEFIX_API_KEY" /tmp/stub_envdump.log && { echo "FAIL env leaked credential"; FAIL=1; } || echo "PASS env scrubbed"
 grep -q "sk-lower\|api_key" /tmp/stub_envdump.log && { echo "FAIL env leaked lowercase credential"; FAIL=1; } || echo "PASS env scrubbed lowercase"
 
 # 37. changed_files: tool result lists files the command actually changed

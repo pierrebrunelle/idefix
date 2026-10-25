@@ -27,7 +27,11 @@ esac
 # The model-server CLI defaults to `max` (Modular's). If this script is
 # itself on PATH (any name, via symlink or not), skip candidates
 # that resolve to it: -ef compares files, not strings.
-MAXCLI="${MAXCLI:-}"
+# IDEFIX_* are the canonical agent env vars; legacy MAX_* still work.
+export MAX_MODEL="${IDEFIX_MODEL:-${MAX_MODEL:-}}"
+export MAX_API_KEY="${IDEFIX_API_KEY:-${MAX_API_KEY:-}}"
+MAXCLI="${IDEFIX_MAXCLI:-${MAXCLI:-}}"
+MAX_GPU="${IDEFIX_GPU:-${MAX_GPU:-}}"
 if [ -z "$MAXCLI" ]; then
     while IFS= read -r c; do
         [ -n "$c" ] && [ ! "$c" -ef "$SELF" ] && MAXCLI="$c" && break
@@ -36,7 +40,7 @@ $(type -aP max 2>/dev/null)
 EOF
 fi
 USER_MODEL="${MAX_MODEL:-}"   # an explicit choice beats whatever is served
-BASE="${MAX_BASE_URL:-http://127.0.0.1:8000/v1}"
+BASE="${IDEFIX_BASE_URL:-${MAX_BASE_URL:-http://127.0.0.1:8000/v1}}"
 
 # Server up? Sends MAX_API_KEY when set so authenticated endpoints probe true.
 up() {

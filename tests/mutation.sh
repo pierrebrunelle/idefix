@@ -10,9 +10,9 @@ set -u
 cd "$(dirname "$0")/.."
 
 MOJO="${MOJO:-/Users/pjlb/mojo-agent-spike/.venv/bin/mojo}"
-export MAX_BASE_URL="http://127.0.0.1:18923/v1"
-export MAX_MODEL="${MAX_MODEL:-test-model}"
-export MAX_STATE_DIR=/tmp/idefix-mutation-state   # keep probes out of real $HOME
+export IDEFIX_BASE_URL="http://127.0.0.1:18923/v1"
+export IDEFIX_MODEL="${IDEFIX_MODEL:-test-model}"
+export IDEFIX_STATE_DIR=/tmp/idefix-mutation-state   # keep probes out of real $HOME
 
 RESULT=0
 
@@ -85,7 +85,7 @@ sed -i.bak 's/"key"/"zzz"/' max_shim.c && rm -f max_shim.c.bak
 grep -q '"zzz"' max_shim.c || { echo "edit did not apply" >&2; exit 1; }
 build
 rm -f /tmp/stub_envdump.log
-run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible \
+run_mode envdump env IDEFIX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible \
     ./idefix --repo . "task"
 grep -q 'sk-lower\|api_key' /tmp/stub_envdump.log && obs=FAIL || obs=PASS
 cp /tmp/idefix-mut-max_shim.c max_shim.c

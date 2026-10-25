@@ -83,8 +83,8 @@ idefix "the slugify test fails on unicode input - fix it and re-run the tests"
 The first run lazily boots a local server (`Qwen/Qwen3-1.7B`, ~2 GB RAM), runs your task, and shuts it down. Already running one? Point at it and it gets used instead:
 
 ```bash
-export MAX_BASE_URL=http://127.0.0.1:11434/v1   # e.g. ollama
-export MAX_MODEL=qwen3:4b
+export IDEFIX_BASE_URL=http://127.0.0.1:11434/v1   # e.g. ollama
+export IDEFIX_MODEL=qwen3:4b
 idefix "fix the parser bug and run its tests"
 ```
 
@@ -111,12 +111,11 @@ new code
 EOF
 ```
 
-> **Naming:** `idefix` was chosen so it never collides with Modular's `max` CLI (the model server `pip install modular` puts on PATH). Server env vars keep their `MAX_` names; the agent's own state-dir override is `IDEFIX_STATE_DIR` (`~/.idefix`).
 
 ## Where it runs
 
 - **OS:** macOS (arm64) and Linux (x86_64) — `make` builds `./idefix`, `make bundle` ships binary + dylibs + wrapper.
-- **Model server:** any OpenAI-compatible endpoint (`MAX_BASE_URL`, `MAX_MODEL`, `MAX_API_KEY`). The wrapper boots Modular `max serve` on demand if nothing is answering.
+- **Model server:** any OpenAI-compatible endpoint (`IDEFIX_BASE_URL`, `IDEFIX_MODEL`, `IDEFIX_API_KEY`; legacy `MAX_*` names still work). The wrapper boots Modular `max serve` on demand if nothing is answering.
 - **Repo:** any directory via `--repo`; the REPL uses your cwd. `AGENTS.md` / `CLAUDE.md` at the root is loaded automatically.
 
 ## When to use it (and when not)
@@ -150,4 +149,4 @@ Every row is verified by the task's independent test script — never by the mod
 - Credential env vars (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `CREDENTIAL`) are scrubbed from model-issued subshells.
 - Non-goals on purpose: no streaming, no cloud providers, no MCP, no sub-agents. The model server is a separate OS process the binary never manages.
 
-If you want a polished pair-programming UI or hosted APIs, use aider or pi. `idefix` is a laboratory for measuring how small the agent loop can get.
+If you want a polished pair-programming UI or hosted APIs, use aider or pi. `idefix` is a laboratory for measuring how small the agent loop can get. How the loop works internally: [ARCHITECTURE.md](ARCHITECTURE.md).
