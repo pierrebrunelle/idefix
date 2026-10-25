@@ -21,7 +21,9 @@ kill_stub() { lsof -ti:18923 2>/dev/null | xargs kill -9 2>/dev/null || true; }
 cleanup() {
     cp /tmp/max-mut-max.mojo max.mojo 2>/dev/null || true
     cp /tmp/max-mut-max_shim.c max_shim.c 2>/dev/null || true
+    cp /tmp/max-mut-bindings.mojo bindings.mojo 2>/dev/null || true
     rm -f pwned.txt 'x$(touch pwned.txt)'
+    pkill -f "sleep 29" 2>/dev/null || true
     kill_stub
 }
 trap cleanup EXIT
@@ -52,6 +54,7 @@ kill_stub
 # pristine copies; cleanup() restores from these even on early exit
 cp max.mojo /tmp/max-mut-max.mojo
 cp max_shim.c /tmp/max-mut-max_shim.c
+cp bindings.mojo /tmp/max-mut-bindings.mojo
 
 # a. looks_write: make '>' in 2>&1 count as a write -> false noop warning
 echo "== a. looks_write fd-dup rule (nxt != 0x26 -> 0x21)"
@@ -87,6 +90,20 @@ run_mode envdump env MAX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visibl
 grep -q 'sk-lower\|api_key' /tmp/stub_envdump.log && obs=FAIL || obs=PASS
 cp /tmp/max-mut-max_shim.c max_shim.c
 report "max_shim.c scrub key->zzz" "envdump" "$obs"
+
+# d. detached-grandchild killpg: skip the group kill after normal
+#    completion -> (sleep 29 &) survives -> pgrep finds it -> FAIL
+echo "== d. post-drain killpg (elif not timed_out -> elif timed_out)"
+sed -i.bak 's/elif not timed_out:/elif timed_out:/' bindings.mojo && rm -f bindings.mojo.bak
+grep -q 'elif timed_out:' bindings.mojo || { echo "edit did not apply" >&2; exit 1; }
+build
+pkill -f "sleep 29" 2>/dev/null || true
+run_mode detach ./max --repo . "task"
+sleep 1
+pgrep -f "sleep 29" >/dev/null && obs=FAIL || obs=PASS
+pkill -f "sleep 29" 2>/dev/null || true
+cp /tmp/max-mut-bindings.mojo bindings.mojo
+report "bindings.mojo killpg guard inverted" "detach" "$obs"
 
 echo "== restoring clean binary"
 build
