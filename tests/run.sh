@@ -109,6 +109,26 @@ check "loop exit" 2 "$rc"
 grep -q "loop_warning" /tmp/stub_loop.log && echo "PASS loop warning" || { echo "FAIL loop warning"; cat /tmp/stub_loop.log; FAIL=1; }
 grep -q '"stop":true' "$IDEFIX_STATE_DIR"/sessions/*/journal.jsonl 2>/dev/null && echo "PASS loop doom stop" || { echo "FAIL loop doom stop"; FAIL=1; }
 
+# 13doomwarn. --doom-warn: 5th repeat returns a warn result and loops once more;
+# the repeat after that still stops with exit 2
+out=$(run_mode loop ./idefix --repo . --max-requests 8 --doom-warn "task" 2>/dev/null); rc=$?
+check "doomwarn exit" 2 "$rc"
+grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doom warn result" || { echo "FAIL doom warn result"; cat /tmp/stub_loop.log; FAIL=1; }
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"warn":true' {} \; 2>/dev/null | grep -q . && echo "PASS doom warn journal" || { echo "FAIL doom warn journal"; FAIL=1; }
+
+# 13gate. --done-gate: write-shaped last command then text reply -> one
+# verification nudge (2 pairing requests vs 1 without the flag)
+out=$(run_mode writefinal ./idefix --repo . --done-gate "task" 2>/dev/null); rc=$?
+check "gate exit" 0 "$rc"
+check "gate answer" "Done." "$out"
+check "gate re-asked" 2 "$(grep -c 'STUB pairing' /tmp/stub_writefinal.log)"
+rm -f gate-wrote.txt
+
+out=$(run_mode writefinal ./idefix --repo . "task" 2>/dev/null); rc=$?
+check "nogate exit" 0 "$rc"
+check "nogate no re-ask" 1 "$(grep -c 'STUB pairing' /tmp/stub_writefinal.log)"
+rm -f gate-wrote.txt
+
 # 13b. wall deadline stops a runaway loop and clamps command timeout
 start=$(python3 -c 'import time;print(time.time())')
 out=$(run_mode loop ./idefix --repo . --max-seconds 1 --no-loop-guard "task" 2>/dev/null); rc=$?

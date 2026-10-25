@@ -5,7 +5,7 @@ Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | medit | ediff
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
-       | flood | many | markup | think | finalans | stall | detach
+       | flood | many | markup | think | finalans | stall | detach | writefinal
 """
 import json
 import os
@@ -201,6 +201,13 @@ class Handler(BaseHTTPRequestHandler):
             elif MODE == "cfdiff":
                 resp = msg_response(
                     calls=[tool_call("call_c", "echo cf > cf-out.txt")],
+                    finish="tool_calls",
+                )
+            elif MODE == "writefinal":
+                # one write-shaped command, then plain text forever: the
+                # done-gate should nudge once, the baseline should not
+                resp = msg_response(
+                    calls=[tool_call("call_w", "touch gate-wrote.txt")],
                     finish="tool_calls",
                 )
             elif MODE == "injname":

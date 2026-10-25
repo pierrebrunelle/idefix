@@ -24,6 +24,7 @@ comptime SYSTEM_SUFFIX = """
 
 
 comptime TOOLS = '{"type":"function","function":{"name":"bash","description":"Run a bash command in the repository directory. Returns exit code and bounded merged stdout/stderr output.","parameters":{"type":"object","properties":{"command":{"type":"string","description":"The bash command to run"}},"required":["command"],"additionalProperties":false}}}'
+comptime EDIT_HINT = "\nblocks look like:\n<<<<<<< SEARCH\nexact existing text\n=======\nnew text\n>>>>>>> REPLACE"
 comptime VERSION = "0.1.0"
 comptime DEFAULT_BASE = "http://127.0.0.1:8000/v1"
 
@@ -50,6 +51,8 @@ struct Config(Copyable):
     var compact_keep: Int
     var retries: Int
     var loop_guard: Bool
+    var done_gate: Bool
+    var doom_warn: Bool
     var notify: String
     var state_root: String
     var session_dir: String
@@ -82,6 +85,8 @@ struct Config(Copyable):
         self.compact_keep = 6
         self.retries = 3
         self.loop_guard = True
+        self.done_gate = False
+        self.doom_warn = False
         self.notify = ""
         self.state_root = ""
         self.session_dir = ""
@@ -94,7 +99,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --done-gate --doom-warn --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -209,6 +214,10 @@ def parse_args() raises -> Config:
                 cfg.retries = n
         elif arg == "--no-loop-guard":
             cfg.loop_guard = False
+        elif arg == "--done-gate":
+            cfg.done_gate = True
+        elif arg == "--doom-warn":
+            cfg.doom_warn = True
         elif arg == "--continue":
             cfg.cont = True
         elif arg == "--bare":
@@ -286,6 +295,8 @@ def parse_args() raises -> Config:
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
+        cfg.done_gate = False
+        cfg.doom_warn = False
     if cfg.sandbox:
         if not bindings.file_exists("/usr/bin/sandbox-exec"):
             die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
@@ -556,6 +567,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var deadline = bindings.now_seconds() + cfg.max_seconds
     var exit_code = 0
     var final = ""
+    var doom_armed = False
+    var gate_fired = False
     # per-turn budget: the REPL shares st across turns
     st.requests = 0
     while st.requests < cfg.max_requests:
@@ -724,15 +737,34 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 if cmd == st.last_cmd:
                                     st.cmd_repeats += 1
                                 else:
-                                    st.last_cmd = cmd
                                     st.cmd_repeats = 0
+                            # last_cmd always tracks: --done-gate reads it
+                            # even with --no-loop-guard
+                            st.last_cmd = cmd
                             var doom_now = cfg.loop_guard and st.cmd_repeats >= 4
                             var mark = String("")
                             var hasher = String("md5 -r")
                             var prof = String("")
                             var clone_ok = False
                             var tree = String("")
-                            if doom_now:
+                            if doom_now and cfg.doom_warn and not doom_armed:
+                                # warn once instead of killing: the model sees
+                                # the error and gets one turn to stop on its own
+                                doom_armed = True
+                                result = (
+                                    '{"error":"same command repeated 5 times;'
+                                    + ' do not re-issue it - run a different check'
+                                    + ' or reply with your final answer.'
+                                    + ' Repeating it stops the run."}'
+                                )
+                                journal(
+                                    cfg,
+                                    '{"ev":"loop","ts":'
+                                    + String(bindings.now_seconds())
+                                    + ',"cmd":' + bindings.json_quote(cmd)
+                                    + ',"warn":true}',
+                                )
+                            elif doom_now:
                                 result = (
                                     '{"error":"same command repeated 5 times;'
                                     + ' stopped by loop guard"}'
@@ -817,7 +849,9 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     var count = st.cmd_repeats + 1
                                     result += (
                                         ',"loop_warning":"same command ran '
-                                        + String(count) + ' times in a row"'
+                                        + String(count) + ' times in a row;'
+                                        + ' if a check already passed, reply with'
+                                        + ' your final answer instead of re-running"'
                                     )
                                     journal(
                                         cfg,
@@ -922,6 +956,21 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 )
                 if msg_owner:
                     bindings.cjson_del(msg_owner)
+                bindings.cjson_del(root)
+                continue
+            if (
+                cfg.done_gate and not gate_fired and st.last_cmd != ""
+                and looks_write(st.last_cmd)
+            ):
+                # write-then-done with no check in between: ask once for the
+                # verification, then accept whatever it says next
+                gate_fired = True
+                push_msg(
+                    cfg, history,
+                    '{"role":"user","content":"Your last change was never checked;'
+                    + ' run the check that shows the task done, or state that'
+                    + ' none exists."}',
+                )
                 bindings.cjson_del(root)
                 continue
             final = content
@@ -1047,7 +1096,7 @@ def run_edit(path: String) raises -> Int:
         var mb = spec.find("\n" + M + "\n", sb)
         var eb = spec.find("\n" + E, mb if mb >= 0 else sb)
         if mb < 0 or eb < 0:
-            bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)")
+            bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)" + EDIT_HINT)
             return 1
         var old = String(spec[byte= sb + S.byte_length() + 1 : mb])
         var new = String(spec[byte= mb + M.byte_length() + 2 : eb])
@@ -1071,7 +1120,7 @@ def run_edit(path: String) raises -> Int:
         applied += 1
         pos = eb + E.byte_length()
     if applied == 0:
-        bindings.eprint("idefix edit: no SEARCH/REPLACE blocks on stdin")
+        bindings.eprint("idefix edit: no SEARCH/REPLACE blocks on stdin" + EDIT_HINT)
         return 1
     # syntax gate: never write python that does not compile
     if path.endswith(".py"):
