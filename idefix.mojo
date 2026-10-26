@@ -51,8 +51,6 @@ struct Config(Copyable):
     var compact_keep: Int
     var retries: Int
     var loop_guard: Bool
-    var done_gate: Bool
-    var done_gate2: Bool
     var doom_warn: Bool
     var loop_digest: Bool
     var notify: String
@@ -87,8 +85,6 @@ struct Config(Copyable):
         self.compact_keep = 6
         self.retries = 3
         self.loop_guard = True
-        self.done_gate = False
-        self.done_gate2 = False
         self.doom_warn = False
         self.loop_digest = False
         self.notify = ""
@@ -103,7 +99,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --done-gate --done-gate2 --doom-warn --loop-digest --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-warn --loop-digest --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -218,11 +214,6 @@ def parse_args() raises -> Config:
                 cfg.retries = n
         elif arg == "--no-loop-guard":
             cfg.loop_guard = False
-        elif arg == "--done-gate":
-            cfg.done_gate = True
-        elif arg == "--done-gate2":
-            cfg.done_gate = True
-            cfg.done_gate2 = True
         elif arg == "--doom-warn":
             cfg.doom_warn = True
         elif arg == "--loop-digest":
@@ -304,8 +295,6 @@ def parse_args() raises -> Config:
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
-        cfg.done_gate = False
-        cfg.done_gate2 = False
         cfg.doom_warn = False
         cfg.loop_digest = False
     if cfg.sandbox:
@@ -579,10 +568,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var exit_code = 0
     var final = ""
     var doom_armed = False
-    var gate_fires = 0
-    # executed cmd + exit-code tail; only kept under --done-gate2 for the
-    # second-strike evidence echo
-    var gate_hist = List[String]()
     # outcome digests across the whole turn: catches A-B-A-B loops where the
     # command text varies but the result is identical (nemotron jq retry loop)
     var digests = List[String]()
@@ -765,9 +750,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     st.cmd_repeats += 1
                                 else:
                                     st.cmd_repeats = 0
-                            # last_cmd always tracks: --done-gate reads it
-                            # even with --no-loop-guard
-                            st.last_cmd = cmd
+                                st.last_cmd = cmd
                             var doom_now = cfg.loop_guard and st.cmd_repeats >= 4
                             var mark = String("")
                             var hasher = String("md5 -r")
@@ -864,8 +847,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     "  -> exit " + String(rc[1])
                                     + " out=" + String(rc[0].byte_length()) + "B",
                                 )
-                                if cfg.done_gate2:
-                                    gate_hist.append(cmd + "\x1f" + String(rc[1]))
                                 result = (
                                     '{"exit_code":'
                                     + String(rc[1])
@@ -1013,65 +994,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 )
                 if msg_owner:
                     bindings.cjson_del(msg_owner)
-                bindings.cjson_del(root)
-                continue
-            var gate_max = 1
-            if cfg.done_gate2:
-                gate_max = 2
-            if (
-                cfg.done_gate and gate_fires < gate_max and st.last_cmd != ""
-                and looks_write(st.last_cmd)
-            ):
-                # write-then-done with no check in between: ask for the
-                # verification, then accept whatever it says next. Under
-                # --done-gate2 a second attempt gets one more nudge quoting
-                # the run's own command evidence.
-                gate_fires += 1
-                if gate_fires == 1:
-                    push_msg(
-                        cfg, history,
-                        '{"role":"user","content":"Your last change was never checked;'
-                        + ' run the check that shows the task done, or state that'
-                        + ' none exists."}',
-                    )
-                else:
-                    # "commands since your last write" = everything after the
-                    # previous write; w stays -1 when the run only ever wrote
-                    # once, which lists the whole tail
-                    var w = -1
-                    var last_w = -1
-                    for i in range(len(gate_hist)):
-                        if looks_write(String(gate_hist[i].split("\x1f")[0])):
-                            w = last_w
-                            last_w = i
-                    var lo = w + 1
-                    if len(gate_hist) - lo > 6:
-                        lo = len(gate_hist) - 6
-                    var ev = String("")
-                    for i in range(lo, len(gate_hist)):
-                        var p = gate_hist[i].split("\x1f")
-                        var c = String(p[0])
-                        if c.byte_length() > 60:
-                            var ccap = String(c[byte= : 60])
-                            c = ccap^
-                        if ev != "":
-                            ev += ", "
-                        ev += "`" + c + "` (exit " + String(p[len(p) - 1]) + ")"
-                    if ev == "":
-                        # possible on a resumed REPL turn where last_cmd is
-                        # stale; never emit an empty evidence list
-                        ev = "(no commands ran this turn)"
-                    push_msg(
-                        cfg, history,
-                        '{"role":"user","content":'
-                        + bindings.json_quote(
-                            "Commands since your last write: " + ev
-                            + ". None observed the required end state; run the"
-                            + " check that shows the task done, or reply that"
-                            + " you cannot verify."
-                        )
-                        + "}",
-                    )
                 bindings.cjson_del(root)
                 continue
             final = content

@@ -5,8 +5,8 @@ Usage: stub_server.py PORT MODE
 Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | medit | ediff
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
-       | flood | many | markup | think | finalans | stall | detach | writefinal
-       | writefinal2 | resultloop | reasoning | thinkleak
+       | flood | many | markup | think | finalans | stall | detach
+       | resultloop | reasoning | thinkleak
 """
 import json
 import os
@@ -216,20 +216,6 @@ class Handler(BaseHTTPRequestHandler):
                     calls=[tool_call("call_c", "echo cf > cf-out.txt")],
                     finish="tool_calls",
                 )
-            elif MODE == "writefinal":
-                # one write-shaped command, then plain text forever: the
-                # done-gate should nudge once, the baseline should not
-                resp = msg_response(
-                    calls=[tool_call("call_w", "touch gate-wrote.txt")],
-                    finish="tool_calls",
-                )
-            elif MODE == "writefinal2":
-                # first write; the n_tool>0 branch issues a second write
-                # after gate nudge #1, so a two-strike gate can fire twice
-                resp = msg_response(
-                    calls=[tool_call("call_w1", "touch gate2-wrote.txt")],
-                    finish="tool_calls",
-                )
             elif MODE == "injname":
                 # single quotes make the filename literal; if the diff-echo
                 # interpolates it unquoted, touch pwned.txt executes
@@ -331,18 +317,9 @@ class Handler(BaseHTTPRequestHandler):
             sys.stderr.write(
                 "STUB tool json ok: %s\n" % all(_is_json(c) for c in tool_contents)
             )
-            if MODE == "writefinal2" and n_tool == 1 and ok and sum(
-                    1 for m in msgs if m.get("role") == "user") == 2:
-                # gate nudge #1 landed and the model "complied" by writing
-                # again instead of checking; strike 2 must echo evidence
-                resp = msg_response(
-                    calls=[tool_call("call_w2", "echo more >> gate2-wrote.txt")],
-                    finish="tool_calls",
-                )
-            else:
-                resp = msg_response(
-                    content="Done." if ok else "PROTOCOL VIOLATION: unmatched tool results"
-                )
+            resp = msg_response(
+                content="Done." if ok else "PROTOCOL VIOLATION: unmatched tool results"
+            )
         data = json.dumps(resp).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
