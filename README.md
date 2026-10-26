@@ -1,4 +1,4 @@
-<img width="1024" height="572" alt="image" src="https://github.com/user-attachments/assets/701e3fd8-6e4a-425f-b450-2f76bffb1d7c" />
+<img width="1024" height="338" alt="idefix — a tiny native coding agent for local models: one tool, one loop, 300KB native" src=".github/banner.png" />
 
 # idefix
 
