@@ -116,17 +116,6 @@ check "doomwarn exit" 2 "$rc"
 grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doom warn result" || { echo "FAIL doom warn result"; cat /tmp/stub_loop.log; FAIL=1; }
 find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"warn":true' {} \; 2>/dev/null | grep -q . && echo "PASS doom warn journal" || { echo "FAIL doom warn journal"; FAIL=1; }
 
-# 13digest. --loop-digest: identical outcomes from varying commands get a
-# result-kind loop_warning; off by default
-out=$(run_mode resultloop ./idefix --repo . --max-requests 8 --loop-digest "task" 2>/dev/null); rc=$?
-check "digest exit" 2 "$rc"
-grep -q "same outcome" /tmp/stub_resultloop.log && echo "PASS digest warning" || { echo "FAIL digest warning"; cat /tmp/stub_resultloop.log; FAIL=1; }
-find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"kind":"result"' {} \; 2>/dev/null | grep -q . && echo "PASS digest journal" || { echo "FAIL digest journal"; FAIL=1; }
-
-out=$(run_mode resultloop ./idefix --repo . --max-requests 8 "task" 2>/dev/null); rc=$?
-check "digest off exit" 2 "$rc"
-grep -q "same outcome" /tmp/stub_resultloop.log && { echo "FAIL digest off"; FAIL=1; } || echo "PASS digest off"
-
 # 13reason. thinking-mode servers answer in `reasoning` with empty content;
 # a stray orphan </think> should be stripped too
 out=$(run_mode reasoning ./idefix --repo . "task" 2>/dev/null); rc=$?

@@ -64,7 +64,7 @@ a warning, not success.
 Every bound is a flag: `--max-requests --max-seconds
 --max-command-seconds --max-output-bytes --max-http-bytes
 --max-prompt-tokens --max-calls-per-response --retries --no-loop-guard
---doom-warn --loop-digest --compact-at --bare --sandbox --continue
+--doom-warn --compact-at --bare --sandbox --continue
 --resume`. `--bare` strips the guardrails and is byte-parity with the
 reference client; `--sandbox` confines writes to repo + tmp.
 
