@@ -1,8 +1,7 @@
 # idefix architecture
 
-One file of agent logic (`idefix.mojo`, ~1.3k lines), one model-facing tool
-(`bash`), one loop. This document is the map: layers, the run state chart,
-the tool-call dataflow, and how sessions persist.
+One file of agent logic (`idefix.mojo`), one tool (`bash`), one loop.
+Layers, the run state chart, the tool-call dataflow, sessions.
 
 ## Layers
 
@@ -19,7 +18,7 @@ SERVER     any OpenAI-compatible endpoint (separate OS process)
            idefix never manages it; scripts/with-max.sh lazily boots one
   |   assistant message with tool_calls[bash(command)]
   v
-MODEL      Qwen3-1.7B..14B etc. — the intelligence; harness only feeds it
+MODEL      the intelligence; the harness only feeds it
 
 EXECUTION  inside idefix, per tool call:
            bash -c "cmd" in the repo — scrubbed env, process group,
@@ -98,10 +97,7 @@ journal    --------  append tool result entry to journal.jsonl + status file
 APPEND to history -> next REQUEST
 ```
 
-The honesty rule: `exit 0` with nothing changed is reported as a warning,
-not success — small models otherwise believe failed edits landed.
-
-## Sessions: journal, resume, fork
+## Sessions
 
 ```text
 journal.jsonl   append-only event log (per state dir, per repo)
@@ -113,21 +109,3 @@ idefix --resume FILE       replay FILE as the journal
 fork = a file operation, not a feature:
   head -n K journal.jsonl > fork.jsonl && idefix --resume fork.jsonl
 ```
-
-## vs the other harnesses
-
-```text
-opencode ~1.05M LOC - dsh ~569k - codex ~420k+ - pi ~100k
-aider ~22k LOC + ~100 deps
-idefix ~1.3k LOC -> one 300KB binary
-
-same job, different surface:
-  pi/aider = TUI, plugins, providers, MCP, sub-agents
-  idefix   = the loop above and nothing else; every bound is a flag,
-             every claim is a test (tests/run.sh, tests/mutation.sh)
-```
-
-A bare Python loop covers most trivial tasks; idefix is that loop plus the
-verified hardening (bounds, honest results, journal, sandbox, cleanup).
-Frameworks (LangGraph, NeMo OO-Agents, Mastra) are a different layer:
-build-your-own kits — idefix deliberately uses none.
