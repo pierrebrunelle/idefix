@@ -4,3 +4,4 @@ libidefix_c.a
 *.o
 __pycache__/
 .DS_Store
+idefix.sha

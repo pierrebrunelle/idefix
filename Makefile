@@ -1,7 +1,10 @@
 MOJO ?= mojo
 CC ?= cc
 
-all: libidefix_c.a idefix
+all: libidefix_c.a idefix idefix.sha
+
+idefix.sha: idefix
+	git rev-parse --short HEAD > idefix.sha
 
 libidefix_c.a: idefix_shim.o vendor/cJSON.o
 	ar rcs $@ $^
@@ -42,7 +45,7 @@ bundle: idefix
 	fi
 
 clean:
-	rm -f idefix libidefix_c.a idefix_shim.o vendor/cJSON.o
+	rm -f idefix idefix.sha libidefix_c.a idefix_shim.o vendor/cJSON.o
 	rm -rf bundle
 
 .PHONY: all test bundle clean
