@@ -9,7 +9,7 @@
 set -u
 cd "$(dirname "$0")/.."
 
-MOJO="${MOJO:-/Users/pjlb/mojo-agent-spike/.venv/bin/mojo}"
+MOJO="${MOJO:-mojo}"
 export IDEFIX_BASE_URL="http://127.0.0.1:18923/v1"
 export IDEFIX_MODEL="${IDEFIX_MODEL:-test-model}"
 export IDEFIX_STATE_DIR=/tmp/idefix-mutation-state   # keep probes out of real $HOME
@@ -20,7 +20,7 @@ kill_stub() { lsof -ti:18923 2>/dev/null | xargs kill -9 2>/dev/null || true; }
 
 cleanup() {
     cp /tmp/idefix-mut-idefix.mojo idefix.mojo 2>/dev/null || true
-    cp /tmp/idefix-mut-max_shim.c max_shim.c 2>/dev/null || true
+    cp /tmp/idefix-mut-idefix_shim.c idefix_shim.c 2>/dev/null || true
     cp /tmp/idefix-mut-bindings.mojo bindings.mojo 2>/dev/null || true
     rm -f pwned.txt 'x$(touch pwned.txt)'
     pkill -f "sleep 29" 2>/dev/null || true
@@ -53,7 +53,7 @@ kill_stub
 
 # pristine copies; cleanup() restores from these even on early exit
 cp idefix.mojo /tmp/idefix-mut-idefix.mojo
-cp max_shim.c /tmp/idefix-mut-max_shim.c
+cp idefix_shim.c /tmp/idefix-mut-idefix_shim.c
 cp bindings.mojo /tmp/idefix-mut-bindings.mojo
 
 # a. looks_write: make '>' in 2>&1 count as a write -> false noop warning
@@ -81,15 +81,15 @@ report "idefix.mojo diff-echo unquoted fname" "injname" "$obs"
 
 # c. env scrub: drop the 'key' name marker -> api_key leaks into env dump
 echo "== c. shim_scrubbed_env pattern (key -> zzz)"
-sed -i.bak 's/"key"/"zzz"/' max_shim.c && rm -f max_shim.c.bak
-grep -q '"zzz"' max_shim.c || { echo "edit did not apply" >&2; exit 1; }
+sed -i.bak 's/"key"/"zzz"/' idefix_shim.c && rm -f idefix_shim.c.bak
+grep -q '"zzz"' idefix_shim.c || { echo "edit did not apply" >&2; exit 1; }
 build
 rm -f /tmp/stub_envdump.log
 run_mode envdump env IDEFIX_API_KEY=sekrit-xy api_key=sk-lower KEEP_ME_PLAIN=visible \
     ./idefix --repo . "task"
 grep -q 'sk-lower\|api_key' /tmp/stub_envdump.log && obs=FAIL || obs=PASS
-cp /tmp/idefix-mut-max_shim.c max_shim.c
-report "max_shim.c scrub key->zzz" "envdump" "$obs"
+cp /tmp/idefix-mut-idefix_shim.c idefix_shim.c
+report "idefix_shim.c scrub key->zzz" "envdump" "$obs"
 
 # d. detached-grandchild killpg: skip the group kill after normal
 #    completion -> (sleep 29 &) survives -> pgrep finds it -> FAIL

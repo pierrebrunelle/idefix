@@ -297,9 +297,14 @@ def parse_args() raises -> Config:
             die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
         # '"' and '\' break out of quoted SBPL subpath args
         var stmp = getenv("TMPDIR")
+        # the profile embeds realpath(repo), not the raw flag: a symlink
+        # can smuggle a quote past a raw-string check, so validate the
+        # resolved path too (realpath of a missing dir returns its arg)
+        var rres = bindings.realpath(cfg.repo)
         if (
             cfg.repo.find('"') >= 0 or cfg.repo.find("\\") >= 0
             or stmp.find('"') >= 0 or stmp.find("\\") >= 0
+            or rres.find('"') >= 0 or rres.find("\\") >= 0
         ):
             die("--sandbox: repo path and TMPDIR must not contain '\"' or '\\'", 64)
     if not cfg.bare and cfg.state_root != "":
@@ -714,7 +719,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 var cid = bindings.cjson_str(bindings.cjson_get(call, "id"))
                 var fn_ = bindings.cjson_get(call, "function")
                 var name = bindings.cjson_str(bindings.cjson_get(fn_, "name"))
-                var argsj = bindings.cjson_str(bindings.cjson_get(fn_, "arguments"))
+                var arg_item = bindings.cjson_get(fn_, "arguments")
+                var argsj = bindings.cjson_str(arg_item)
+                if argsj == "" and arg_item:
+                    # some servers emit arguments as an object, not a
+                    # stringified blob - re-serialize like the markup path
+                    argsj = bindings.cjson_print(arg_item)
                 var result = String("")
                 if name != "bash":
                     result = (
@@ -804,7 +814,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         # them visible to changed_files (+48M overlaps
                                         # the boundary so nothing falls between)
                                         snap += (
-                                            "-name .git -o -name .max-state -o -name .idefix-state -prune -o "
+                                            "\\( -name .git -o -name .max-state -o -name .idefix-state \\) -prune -o "
                                             + "-type f \\( -size -50M -exec " + hasher
                                             + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
                                             + " 2>/dev/null | sort > " + mark
@@ -870,7 +880,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                             cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
                                         ) + "' -prune -o "
                                     dcmd += (
-                                        "-name .git -o -name .max-state -o -name .idefix-state -prune -o "
+                                        "\\( -name .git -o -name .max-state -o -name .idefix-state \\) -prune -o "
                                         + "-type f \\( -size -50M -exec " + hasher
                                         + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
                                         + " 2>/dev/null"
