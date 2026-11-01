@@ -4,11 +4,6 @@
 
 **A tiny native coding agent for local models. One tool: `bash`. One loop.**
 
-```bash
-curl -fsSL https://github.com/pierrebrunelle/idefix/releases/latest/download/install.sh | bash
-idefix "fix the parser bug and re-run the tests"
-```
-
 A ~300 KB Mojo binary, ~1.3k lines of agent logic you can read in an hour.
 It takes a task, talks to any OpenAI-compatible server (`max serve`,
 Ollama, LM Studio, llama-server, vLLM), runs the model's `bash(command)`
@@ -18,6 +13,45 @@ calls inside your repo, and prints the answer. Zero Python at runtime,
 Capability = model × harness. The harness half should be small enough to
 hold in your head — that is the whole reason idefix exists.
 
+## Quickstart — fresh terminal, copy-paste each block
+
+idefix needs two things: the binary, and a local model to talk to.
+
+```bash
+# 1. install idefix (prebuilt binary, no toolchain needed)
+curl -fsSL https://github.com/pierrebrunelle/idefix/releases/latest/download/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"     # makes `idefix` resolve in this shell
+idefix --version                          # sanity check
+```
+
+```bash
+# 2. get a model — Ollama is the easiest local server
+brew install ollama && brew services start ollama    # macOS
+# Linux instead: curl -fsSL https://ollama.com/install.sh | sh
+# if `ollama pull` says "could not connect", run `ollama serve` in a second tab
+ollama pull hf.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB:Q4_K_M   # ~6 GB
+```
+
+```bash
+# 3. run it inside any repo — it finds Ollama on :11434 by itself
+cd my-project
+idefix "fix the parser bug and re-run the tests"
+```
+
+The Nemotron pull above is the model we measured (4/4 verifier-scored
+tasks on Ollama). Any tool-capable model on `ollama` works too —
+`ollama pull qwen3:8b` is a lighter download. Careful with
+`Qwen3-4B-Instruct` builds: some templates emit tool calls as plain text
+and no commands run (a protocol failure, not a model failure).
+
+Not working?
+
+- `command not found: idefix` — run the `export PATH=...` line, or call
+  `~/.local/bin/idefix` directly.
+- `with-max: no server ... and no model-server CLI` — step 2 missing:
+  nothing is listening on `:11434`/`:8000`/`:1234`, so there is no model
+  to talk to.
+
 ## Use
 
 ```bash
@@ -25,14 +59,14 @@ cd my-project
 idefix "the slugify test fails on unicode input - fix it"
 ```
 
-The first run lazily boots a local server (`Qwen/Qwen3-1.7B`) and shuts
-it down after. Already serving? The wrapper probes `ollama :11434`,
-`max serve :8000`, `LM Studio :1234` and adopts the loaded model —
-zero exports needed. To pick one explicitly:
+Already serving? The wrapper probes `ollama :11434`, `max serve :8000`,
+`LM Studio :1234` and adopts the loaded model — zero exports needed.
+With nothing running it falls back to lazily booting `max serve`
+(requires Modular's `max` CLI installed). To pick one explicitly:
 
 ```bash
 export IDEFIX_BASE_URL=http://127.0.0.1:11434/v1   # e.g. ollama
-export IDEFIX_MODEL=qwen3:4b                      # or ~/.idefix/config
+export IDEFIX_MODEL=qwen3:8b                      # or ~/.idefix/config
 ```
 
 ```text
