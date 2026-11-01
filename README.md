@@ -92,6 +92,9 @@ Two findings the raw numbers hide:
 - Fastest decode did not win. llama.cpp generated 6x faster than MLX
   but passed fewer tasks — the serving layer changes what the model
   effectively is (template, quant, tool format), not just its speed.
+- The winner depends on the model. Re-running the same matrix on
+  Nemotron Bolt flipped it: Ollama passed 4/4 (mlx 2/4, llama.cpp 2/4).
+  There is no universal best backend — measure the model you serve.
 
 Data and methodology:
 [pierrebrunelle/max-results](https://github.com/pierrebrunelle/max-results/tree/main/bench).
