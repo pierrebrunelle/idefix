@@ -68,6 +68,34 @@ Every bound is a flag: `--max-requests --max-seconds
 --resume`. `--bare` strips the guardrails and is byte-parity with the
 reference client; `--sandbox` confines writes to repo + tmp.
 
+## Measured: one model, five serving layers
+
+Same Mojo binary, same model (Qwen3-4B-Instruct-2507, 4-bit per backend),
+same 4 verifier-scored coding tasks, 1 rep — directional, not statistical:
+
+<img width="760" alt="serving layer results" src=".github/serve-matrix.svg" />
+
+| serving layer | tasks passed | decode | total task wall |
+|---|---|---|---|
+| MLX-LM | 3/4 | 10 tok/s | 60s |
+| Ollama + tool-call proxy | 3/4 | 44 tok/s | 191s |
+| llama.cpp | 1/4 | 67 tok/s | 129s |
+| Ollama native | 0/4 | 43 tok/s | protocol fail |
+| `max serve` | 0/4 | 0.5 tok/s | wall-capped |
+
+Two findings the raw numbers hide:
+
+- "OpenAI-compatible" does not guarantee structured tool calls. Ollama's
+  template for this model emits `<tool_call>` text inside a reasoning
+  field; idefix executed zero commands until a ~100-line proxy rewrote
+  it into `tool_calls`. That is a protocol failure, not a model failure.
+- Fastest decode did not win. llama.cpp generated 6x faster than MLX
+  but passed fewer tasks — the serving layer changes what the model
+  effectively is (template, quant, tool format), not just its speed.
+
+Data and methodology:
+[pierrebrunelle/max-results](https://github.com/pierrebrunelle/max-results/tree/main/bench).
+
 ## Honest status
 
 Benchmarks (verifier-scored, never self-reported; methodology in

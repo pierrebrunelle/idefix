@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="280" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="760" height="280" fill="white"/>
+<text x="150" y="22" font-size="14" font-weight="600" fill="#1f2328">idefix x serving layer — Qwen3-4B-Instruct-2507 (4-bit per backend)</text>
+<text x="150" y="38" font-size="11" fill="#57606a">tasks passed / 4 (bars) · decode tok/s · total task wall</text>
+<text x="8" y="66" font-size="13" fill="#1f2328">mlx</text>
+<rect x="150" y="52" width="380" height="18" rx="3" fill="#eaeef2"/>
+<rect x="150" y="52" width="285.0" height="18" rx="3" fill="#2da44e"/>
+<text x="443.0" y="66" font-size="12" fill="#1f2328">3/4</text>
+<text x="550" y="66" font-size="11" fill="#57606a">10.3 tok/s · 59.7s wall</text>
+<text x="8" y="110" font-size="13" fill="#1f2328">ollama-proxy</text>
+<rect x="150" y="96" width="380" height="18" rx="3" fill="#eaeef2"/>
+<rect x="150" y="96" width="285.0" height="18" rx="3" fill="#2da44e"/>
+<text x="443.0" y="110" font-size="12" fill="#1f2328">3/4</text>
+<text x="550" y="110" font-size="11" fill="#57606a">44.0 tok/s · 191.4s wall</text>
+<text x="8" y="154" font-size="13" fill="#1f2328">llamacpp</text>
+<rect x="150" y="140" width="380" height="18" rx="3" fill="#eaeef2"/>
+<rect x="150" y="140" width="95.0" height="18" rx="3" fill="#bf8700"/>
+<text x="253.0" y="154" font-size="12" fill="#1f2328">1/4</text>
+<text x="550" y="154" font-size="11" fill="#57606a">66.8 tok/s · 128.6s wall</text>
+<text x="8" y="198" font-size="13" fill="#1f2328">ollama</text>
+<rect x="150" y="184" width="380" height="18" rx="3" fill="#eaeef2"/>
+<rect x="150" y="184" width="0.0" height="18" rx="3" fill="#cf222e"/>
+<text x="158.0" y="198" font-size="12" fill="#1f2328">0/4</text>
+<text x="550" y="198" font-size="11" fill="#57606a">43.4 tok/s · 3.8s wall</text>
+<text x="8" y="242" font-size="13" fill="#1f2328">max</text>
+<rect x="150" y="228" width="380" height="18" rx="3" fill="#eaeef2"/>
+<rect x="150" y="228" width="0.0" height="18" rx="3" fill="#cf222e"/>
+<text x="158.0" y="242" font-size="12" fill="#1f2328">0/4</text>
+<text x="550" y="242" font-size="11" fill="#57606a">0.5 tok/s · 1919.4s wall</text>
+</svg>
