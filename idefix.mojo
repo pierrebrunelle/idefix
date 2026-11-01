@@ -77,7 +77,7 @@ struct Config(Copyable):
         self.max_prompt_tokens = 0
         self.max_calls_per_response = 8
         self.temperature = 0.0
-        self.has_temperature = False
+        self.has_temperature = True
         self.transcript = ""
         self.verbose = False
         self.compact_at = 24000
