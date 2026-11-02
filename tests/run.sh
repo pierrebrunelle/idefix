@@ -118,6 +118,14 @@ grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doomesc warn" || { ec
 grep -q "STUB temp: 0.6" /tmp/stub_loop.log && echo "PASS doomesc boost" || { echo "FAIL doomesc boost"; cat /tmp/stub_loop.log; FAIL=1; }
 find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"escalate":true' {} \; 2>/dev/null | grep -q . && echo "PASS doomesc journal" || { echo "FAIL doomesc journal"; FAIL=1; }
 
+# 13nudge. --doom-nudge: guard fire pushes a user message quoting the repeated
+# command and its output; the repeat after that still stops with exit 2
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
+out=$(run_mode loop ./idefix --repo . --max-requests 8 --doom-nudge "task" 2>/dev/null); rc=$?
+check "doomnudge exit" 2 "$rc"
+grep -q "Do not run it again" /tmp/stub_loop.log && echo "PASS doomnudge msg" || { echo "FAIL doomnudge msg"; grep -c "user" /tmp/stub_loop.log; FAIL=1; }
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"nudge":true' {} \; 2>/dev/null | grep -q . && echo "PASS doomnudge journal" || { echo "FAIL doomnudge journal"; FAIL=1; }
+
 # 13reason. thinking-mode servers answer in `reasoning` with empty content;
 # a stray orphan </think> should be stripped too
 out=$(run_mode reasoning ./idefix --repo . "task" 2>/dev/null); rc=$?
