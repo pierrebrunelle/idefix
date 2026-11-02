@@ -116,6 +116,15 @@ check "doomwarn exit" 2 "$rc"
 grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doom warn result" || { echo "FAIL doom warn result"; cat /tmp/stub_loop.log; FAIL=1; }
 find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"warn":true' {} \; 2>/dev/null | grep -q . && echo "PASS doom warn journal" || { echo "FAIL doom warn journal"; FAIL=1; }
 
+# 13esc. --doom-escalate: guard fire warns and arms one boosted-temperature
+# request; the repeat after that still stops with exit 2
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
+out=$(run_mode loop ./idefix --repo . --max-requests 8 --doom-escalate "task" 2>/dev/null); rc=$?
+check "doomesc exit" 2 "$rc"
+grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doomesc warn" || { echo "FAIL doomesc warn"; cat /tmp/stub_loop.log; FAIL=1; }
+grep -q "STUB temp: 0.6" /tmp/stub_loop.log && echo "PASS doomesc boost" || { echo "FAIL doomesc boost"; cat /tmp/stub_loop.log; FAIL=1; }
+find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"escalate":true' {} \; 2>/dev/null | grep -q . && echo "PASS doomesc journal" || { echo "FAIL doomesc journal"; FAIL=1; }
+
 # 13reason. thinking-mode servers answer in `reasoning` with empty content;
 # a stray orphan </think> should be stripped too
 out=$(run_mode reasoning ./idefix --repo . "task" 2>/dev/null); rc=$?
@@ -146,6 +155,34 @@ out=$(run_mode medit ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "medit exit" 0 "$rc"
 grep -q "block(s) applied" /tmp/stub_medit.log && grep -q "x = 9" /tmp/stub_medit.log && echo "PASS medit apply" || { echo "FAIL medit apply"; cat /tmp/stub_medit.log; FAIL=1; }
 rm -f e.py
+
+# 13d2. editloose: marker-free blocks fail loudly by default, apply under
+# --edit-loose (env reaches the `idefix edit` subprocess)
+out=$(run_mode editloose ./idefix --repo . "task" 2>/dev/null); rc=$?
+check "editloose-off exit" 0 "$rc"
+grep -q "no SEARCH/REPLACE" /tmp/stub_editloose.log && echo "PASS editloose strict default" || { echo "FAIL editloose strict default"; cat /tmp/stub_editloose.log; FAIL=1; }
+rm -f e.py
+out=$(run_mode editloose ./idefix --repo . --edit-loose "task" 2>/dev/null); rc=$?
+check "editloose exit" 0 "$rc"
+grep -q "block(s) applied" /tmp/stub_editloose.log && grep -q "x = 9" /tmp/stub_editloose.log && echo "PASS editloose apply" || { echo "FAIL editloose apply"; cat /tmp/stub_editloose.log; FAIL=1; }
+rm -f e.py
+
+# 13d3. args-repair: raw and JSON-string argument shapes error by default,
+# run under --args-repair
+out=$(run_mode bareargs ./idefix --repo . "task" 2>/dev/null); rc=$?
+check "bareargs-off exit" 0 "$rc"
+grep -q "not valid JSON" /tmp/stub_bareargs.log && echo "PASS bareargs strict default" || { echo "FAIL bareargs strict default"; cat /tmp/stub_bareargs.log; FAIL=1; }
+out=$(run_mode bareargs ./idefix --repo . --args-repair "task" 2>/dev/null); rc=$?
+check "bareargs exit" 0 "$rc"
+grep -q "repair-ok" /tmp/stub_bareargs.log && echo "PASS bareargs repair" || { echo "FAIL bareargs repair"; cat /tmp/stub_bareargs.log; FAIL=1; }
+out=$(run_mode strargs ./idefix --repo . --args-repair "task" 2>/dev/null); rc=$?
+check "strargs exit" 0 "$rc"
+grep -q "stringarg-ok" /tmp/stub_strargs.log && echo "PASS strargs repair" || { echo "FAIL strargs repair"; cat /tmp/stub_strargs.log; FAIL=1; }
+
+# 13d4. warn-hint: no-op write warning names the cause and `idefix edit`
+out=$(run_mode sednoop ./idefix --repo . --warn-hint "task" 2>/dev/null); rc=$?
+check "warnhint exit" 0 "$rc"
+grep -q "regex metachars" /tmp/stub_sednoop.log && grep -q "idefix edit" /tmp/stub_sednoop.log && echo "PASS warnhint hint" || { echo "FAIL warnhint hint"; cat /tmp/stub_sednoop.log; FAIL=1; }
 
 # 13e. ediff: changed file -> compact unified diff in tool result (non-bare)
 out=$(run_mode ediff ./idefix --repo . "task" 2>/dev/null); rc=$?

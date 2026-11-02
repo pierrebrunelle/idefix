@@ -268,6 +268,38 @@ class Handler(BaseHTTPRequestHandler):
                     )],
                     finish="tool_calls",
                 )
+            elif MODE == "editloose":
+                # bash calls `idefix edit` with a marker-free block;
+                # --edit-loose reaches the subprocess via the environment
+                resp = msg_response(
+                    calls=[tool_call(
+                        "call_l",
+                        "printf 'x = 1\n' > e.py\n"
+                        "printf 'x = 1\n=======\nx = 9\n' | idefix edit e.py\n"
+                        "cat e.py",
+                    )],
+                    finish="tool_calls",
+                )
+            elif MODE == "bareargs":
+                # arguments is raw command text, not JSON at all
+                resp = msg_response(
+                    calls=[{
+                        "id": "call_b", "type": "function",
+                        "function": {"name": "bash",
+                                     "arguments": "echo repair-ok"},
+                    }],
+                    finish="tool_calls",
+                )
+            elif MODE == "strargs":
+                # arguments is a JSON string holding the command
+                resp = msg_response(
+                    calls=[{
+                        "id": "call_s", "type": "function",
+                        "function": {"name": "bash",
+                                     "arguments": '"echo stringarg-ok"'},
+                    }],
+                    finish="tool_calls",
+                )
             elif MODE == "ediff":
                 resp = msg_response(
                     calls=[tool_call("call_d", "printf 'a\nb\nc\n' > d.txt")],

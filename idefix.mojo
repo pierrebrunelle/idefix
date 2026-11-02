@@ -52,6 +52,10 @@ struct Config(Copyable):
     var retries: Int
     var loop_guard: Bool
     var doom_warn: Bool
+    var doom_escalate: Bool
+    var edit_loose: Bool
+    var warn_hint: Bool
+    var args_repair: Bool
     var notify: String
     var state_root: String
     var session_dir: String
@@ -85,6 +89,10 @@ struct Config(Copyable):
         self.retries = 3
         self.loop_guard = True
         self.doom_warn = False
+        self.doom_escalate = False
+        self.edit_loose = False
+        self.warn_hint = False
+        self.args_repair = False
         self.notify = ""
         self.state_root = ""
         self.session_dir = ""
@@ -97,7 +105,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-warn --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-warn --doom-escalate --edit-loose --warn-hint --args-repair --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -214,6 +222,14 @@ def parse_args() raises -> Config:
             cfg.loop_guard = False
         elif arg == "--doom-warn":
             cfg.doom_warn = True
+        elif arg == "--doom-escalate":
+            cfg.doom_escalate = True
+        elif arg == "--edit-loose":
+            cfg.edit_loose = True
+        elif arg == "--warn-hint":
+            cfg.warn_hint = True
+        elif arg == "--args-repair":
+            cfg.args_repair = True
         elif arg == "--continue":
             cfg.cont = True
         elif arg == "--bare":
@@ -421,10 +437,13 @@ def write_status(cfg: Config, st: TurnStats, extra: String):
     _ = bindings.write_file(cfg.session_dir + "/status", s + "\n")
 
 
-def build_body(cfg: Config, history: String) -> String:
+def build_body(cfg: Config, history: String, boost: Bool = False) -> String:
     var temp = String("")
     if cfg.has_temperature:
-        temp = ',"temperature":' + String(cfg.temperature)
+        var t = cfg.temperature
+        if boost:
+            t = 0.6
+        temp = ',"temperature":' + String(t)
     return (
         '{"model":'
         + bindings.json_quote(cfg.model)
@@ -549,6 +568,7 @@ struct TurnStats(Copyable):
     var start_s: Int
     var last_cmd: String
     var cmd_repeats: Int
+    var escalate_next: Bool
 
     def __init__(out self):
         self.requests = 0
@@ -559,6 +579,7 @@ struct TurnStats(Copyable):
         self.start_s = 0
         self.last_cmd = ""
         self.cmd_repeats = 0
+        self.escalate_next = False
 
 
 def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tuple[String, Int]:
@@ -577,9 +598,10 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             break
         var req_ms = (deadline - bindings.now_seconds()) * 1000
         var r = bindings.http_post(
-            cfg.base_url + "/chat/completions", build_body(cfg, history),
+            cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
             cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
         )
+        st.escalate_next = False
         st.requests += 1
         var code = r[0]
         var resp = r[1]
@@ -725,6 +747,15 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     # some servers emit arguments as an object, not a
                     # stringified blob - re-serialize like the markup path
                     argsj = bindings.cjson_print(arg_item)
+                if cfg.args_repair:
+                    var raw = String(argsj.strip())
+                    if (
+                        raw != "" and raw.find("{") != 0
+                        and raw.find("[") != 0 and raw.find('"') != 0
+                    ):
+                        # bare command text where JSON was expected; wrap
+                        # so the repair path below lifts it as a string
+                        argsj = bindings.json_quote(raw)
                 var result = String("")
                 if name != "bash":
                     result = (
@@ -737,6 +768,16 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                         result = '{"error":"arguments are not valid JSON"}'
                     else:
                         var cmd = bindings.cjson_str(bindings.cjson_get(aj, "command"))
+                        if cmd == "" and cfg.args_repair:
+                            # models sometimes send the command as a bare
+                            # JSON string or under a near-miss key
+                            cmd = bindings.cjson_str(aj)
+                            if cmd == "":
+                                cmd = bindings.cjson_str(bindings.cjson_get(aj, "cmd"))
+                            if cmd == "":
+                                cmd = bindings.cjson_str(bindings.cjson_get(aj, "input"))
+                            if cmd == "":
+                                cmd = bindings.cjson_str(bindings.cjson_get(aj, "code"))
                         if bindings.now_seconds() > deadline:
                             result = '{"error":"time budget expired; not executed"}'
                         elif cmd == "":
@@ -775,6 +816,25 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     + String(bindings.now_seconds())
                                     + ',"cmd":' + bindings.json_quote(cmd)
                                     + ',"warn":true}',
+                                )
+                            elif doom_now and cfg.doom_escalate and not doom_armed:
+                                # warn once + one boosted-temperature request to
+                                # escape the deterministic repeat; a further
+                                # repeat still stops the run
+                                doom_armed = True
+                                st.escalate_next = True
+                                result = (
+                                    '{"error":"same command repeated 5 times;'
+                                    + ' do not re-issue it - run a different check'
+                                    + ' or reply with your final answer.'
+                                    + ' Repeating it stops the run."}'
+                                )
+                                journal(
+                                    cfg,
+                                    '{"ev":"loop","ts":'
+                                    + String(bindings.now_seconds())
+                                    + ',"cmd":' + bindings.json_quote(cmd)
+                                    + ',"warn":true,"escalate":true}',
                                 )
                             elif doom_now:
                                 result = (
@@ -929,9 +989,23 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                                     ',"diff":' + bindings.json_quote(dtxt)
                                                 )
                                         if cf == "" and rc[1] == 0 and looks_write(cmd):
+                                            var wtxt = String(
+                                                "exit 0 but no files"
+                                                + " changed; the edit may not have applied"
+                                            )
+                                            if cfg.warn_hint:
+                                                wtxt += (
+                                                    "; if a pattern edit"
+                                                    + " (sed/perl/awk) matched"
+                                                    + " nothing, regex metachars"
+                                                    + " (* . [ ]) may be the cause -"
+                                                    + " use 'idefix edit FILE <<EOF'"
+                                                    + " with <<<<<<< SEARCH/=======/"
+                                                    + ">>>>>>> REPLACE blocks"
+                                                )
                                             result += (
-                                                ',"warning":"exit 0 but no files'
-                                                + ' changed; the edit may not have applied"'
+                                                ',"warning":'
+                                                + bindings.json_quote(wtxt)
                                             )
                                     # tree/marks are per-command temp state;
                                     # clean up even when the diff loop did not run
@@ -1083,6 +1157,7 @@ def run_edit(path: String) raises -> Int:
     var spec = read_stdin()
     var pos = 0
     var applied = 0
+    var loose = getenv("IDEFIX_EDIT_LOOSE") != ""
     var S = "<<<<<<< SEARCH"
     var M = "======="
     var E = ">>>>>>> REPLACE"
@@ -1093,8 +1168,10 @@ def run_edit(path: String) raises -> Int:
         var mb = spec.find("\n" + M + "\n", sb)
         var eb = spec.find("\n" + E, mb if mb >= 0 else sb)
         if mb < 0 or eb < 0:
-            bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)" + EDIT_HINT)
-            return 1
+            if not loose:
+                bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)" + EDIT_HINT)
+                return 1
+            break
         var old = String(spec[byte= sb + S.byte_length() + 1 : mb])
         var new = String(spec[byte= mb + M.byte_length() + 2 : eb])
         var hits = find_all(text, old)
@@ -1116,6 +1193,49 @@ def run_edit(path: String) raises -> Int:
         )
         applied += 1
         pos = eb + E.byte_length()
+    if applied == 0 and loose:
+        # marker-free fallback: `old\n=======\nnew` segments, a line starting
+        # >>>>>>> ends a new part, a leading <<<<<<< line is dropped, an
+        # unmatched tail segment is ignored
+        var segs = spec.split("\n" + M + "\n")
+        var i = 0
+        while i + 1 < len(segs):
+            var old = String(segs[i])
+            var new = String(segs[i + 1])
+            if i == 0 and old.find("<<<<<<<") == 0:
+                var nl = old.find("\n")
+                if nl >= 0:
+                    var rest = String(old[byte= nl + 1 :])
+                    old = rest
+            var cx = new.find("\n>>>>>>>")
+            if cx >= 0:
+                var kept = String(new[byte= : cx])
+                new = kept
+            elif new.find(">>>>>>>") == 0:
+                new = String("")
+            if cx < 0 and new.endswith("\n"):
+                # the last segment can keep the spec's trailing newline
+                var trimmed = String(new[byte= : new.byte_length() - 1])
+                new = trimmed
+            var hits = find_all(text, old)
+            if len(hits) != 1:
+                var first = String(old.split("\n")[0])
+                if first == "" and old.byte_length() > 1:
+                    first = String(old.split("\n")[1])
+                var fhits = find_all(text, first)
+                var near = String("")
+                for f in range(min(len(fhits), 4)):
+                    near += "," + String(count_lines(text, fhits[f]))
+                bindings.eprint(
+                    "idefix edit: SEARCH matched " + String(len(hits)) + " times in " + path
+                    + (" (anchors near lines " + near[byte=1:] + ")" if len(fhits) > 0 else "")
+                )
+                return 1
+            text = String(
+                text[byte= : hits[0]] + new + text[byte= hits[0] + old.byte_length() :]
+            )
+            applied += 1
+            i += 2
     if applied == 0:
         bindings.eprint("idefix edit: no SEARCH/REPLACE blocks on stdin" + EDIT_HINT)
         return 1
@@ -1153,6 +1273,13 @@ def main() raises:
         bindings.eprint("usage: idefix edit FILE   (reads SEARCH/REPLACE blocks on stdin)")
         external_call["exit", c_int](c_int(64))
     var cfg = parse_args()
+    if cfg.edit_loose:
+        # `idefix edit` runs as a subprocess of bash commands; the flag
+        # reaches it through the environment
+        var el = "IDEFIX_EDIT_LOOSE"
+        var one = "1"
+        _ = external_call["setenv", c_int](
+            el.as_c_string_span().ptr(), one.as_c_string_span().ptr(), c_int(1))
     var st = TurnStats()
     st.start_s = bindings.now_seconds()
 
