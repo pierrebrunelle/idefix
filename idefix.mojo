@@ -345,6 +345,13 @@ def vlog(cfg: Config, s: String):
         bindings.eprint("[idefix] " + s)
 
 
+def req_status(cfg: Config, n: Int, req_s: Int):
+    bindings.eprint(
+        "\x1b[2m  · req " + String(n) + "/" + String(cfg.max_requests)
+        + " · " + String(bindings.now_seconds() - req_s) + "s\x1b[0m"
+    )
+
+
 def write_transcript(path: String, history: String):
     if path == "":
         return
@@ -672,11 +679,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
         )
         st.requests += 1
         if cfg.tty:
-            bindings.eprint(
-                "\x1b[2m  · req " + String(st.requests) + "/"
-                + String(cfg.max_requests) + " · "
-                + String(bindings.now_seconds() - req_s) + "s\x1b[0m"
-            )
+            req_status(cfg, st.requests, req_s)
         var code = r[0]
         var resp = r[1]
         if code != 0:
@@ -707,11 +710,14 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             if left_ms > 0:
                 bindings.sleep_ms(min(backoff_ms, left_ms))
             req_ms = (deadline - bindings.now_seconds()) * 1000
+            req_s = bindings.now_seconds()
             r = bindings.http_post(
                 cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
                 cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
             )
             st.requests += 1
+            if cfg.tty:
+                req_status(cfg, st.requests, req_s)
             code = r[0]
             resp = r[1]
             if code != 0:
