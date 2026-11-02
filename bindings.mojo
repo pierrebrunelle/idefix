@@ -359,6 +359,10 @@ def stdin_is_tty() -> Bool:
     return external_call["isatty", c_int](c_int(0)) != 0
 
 
+def stderr_is_tty() -> Bool:
+    return external_call["isatty", c_int](c_int(2)) != 0
+
+
 def prompt(s: String):
     # fd 2: stderr keeps stdout pipeable for piped consumers.
     var t = s

@@ -53,6 +53,7 @@ struct Config(Copyable):
     var doom_escalate: Bool
     var doom_nudge: Bool
     var args_repair: Bool
+    var tty: Bool
     var notify: String
     var state_root: String
     var session_dir: String
@@ -96,6 +97,7 @@ struct Config(Copyable):
         self.bare = False
         self.sandbox = False
         self.bindir = ""
+        self.tty = False
 
 
 def usage() -> String:
@@ -663,11 +665,18 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             exit_code = 2
             break
         var req_ms = (deadline - bindings.now_seconds()) * 1000
+        var req_s = bindings.now_seconds()
         var r = bindings.http_post(
             cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
             cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
         )
         st.requests += 1
+        if cfg.tty:
+            bindings.eprint(
+                "\x1b[2m  · req " + String(st.requests) + "/"
+                + String(cfg.max_requests) + " · "
+                + String(bindings.now_seconds() - req_s) + "s\x1b[0m"
+            )
         var code = r[0]
         var resp = r[1]
         if code != 0:
@@ -868,6 +877,8 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                             vlog(cfg, "bash: " + cmd[byte= : min(cmd.byte_length(), 120)])
                             var nl = cmd.find("\n")
                             var first = String(cmd[byte= : min(nl if nl >= 0 else cmd.byte_length(), 80)])
+                            if cfg.tty:
+                                bindings.eprint("\x1b[1m▸ " + first + "\x1b[0m")
                             write_status(cfg, st, "last=" + first)
                             if cfg.loop_guard:
                                 if cmd == st.last_cmd:
@@ -998,6 +1009,13 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     "  -> exit " + String(rc[1])
                                     + " out=" + String(rc[0].byte_length()) + "B",
                                 )
+                                if cfg.tty:
+                                    var col = "\x1b[32m" if rc[1] == 0 else "\x1b[31m"
+                                    bindings.eprint(
+                                        "  " + col + "exit " + String(rc[1])
+                                        + "\x1b[0m\x1b[2m · "
+                                        + String(rc[0].byte_length()) + "B\x1b[0m"
+                                    )
                                 result = (
                                     '{"exit_code":'
                                     + String(rc[1])
@@ -1347,6 +1365,7 @@ def main() raises:
         bindings.eprint("usage: idefix edit FILE   (reads SEARCH/REPLACE blocks on stdin)")
         external_call["exit", c_int](c_int(64))
     var cfg = parse_args()
+    cfg.tty = bindings.stderr_is_tty() and not cfg.bare
     var st = TurnStats()
     st.start_s = bindings.now_seconds()
 
