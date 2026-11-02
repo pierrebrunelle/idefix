@@ -56,10 +56,11 @@ cp idefix.mojo /tmp/idefix-mut-idefix.mojo
 cp idefix_shim.c /tmp/idefix-mut-idefix_shim.c
 cp bindings.mojo /tmp/idefix-mut-bindings.mojo
 
-# a. looks_write: make '>' in 2>&1 count as a write -> false noop warning
-echo "== a. looks_write fd-dup rule (nxt != 0x26 -> 0x21)"
-sed -i.bak 's/and nxt != 0x26:/and nxt != 0x21:/' idefix.mojo && rm -f idefix.mojo.bak
-grep -q 'nxt != 0x21' idefix.mojo || { echo "edit did not apply" >&2; exit 1; }
+# a. looks_write: break the >& fd-dup skip -> 2>&1 counts as a write ->
+# false noop warning
+echo "== a. looks_write fd-dup rule (nxt == 0x26 -> 0x21)"
+sed -i.bak 's/if nxt == 0x26:/if nxt == 0x21:/' idefix.mojo && rm -f idefix.mojo.bak
+grep -q 'nxt == 0x21' idefix.mojo || { echo "edit did not apply" >&2; exit 1; }
 build
 rm -f /tmp/stub_redirnoop.log
 run_mode redirnoop ./idefix --repo . "task"
@@ -100,7 +101,9 @@ build
 pkill -f "sleep 29" 2>/dev/null || true
 run_mode detach ./idefix --repo . "task"
 sleep 1
-pgrep -f "sleep 29" >/dev/null && obs=FAIL || obs=PASS
+# -xf: exact cmdline "sleep 29" - a substring match could hit an
+# observer shell whose own argv contains the pattern (vacuous FAIL)
+pgrep -xf "sleep 29" >/dev/null && obs=FAIL || obs=PASS
 pkill -f "sleep 29" 2>/dev/null || true
 cp /tmp/idefix-mut-bindings.mojo bindings.mojo
 report "bindings.mojo killpg guard inverted" "detach" "$obs"
