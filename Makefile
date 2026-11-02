@@ -4,7 +4,7 @@ CC ?= cc
 all: libidefix_c.a idefix idefix.sha
 
 idefix.sha: idefix
-	git rev-parse --short HEAD > idefix.sha
+	git rev-parse --short HEAD > idefix.sha 2>/dev/null || echo unknown > idefix.sha
 
 libidefix_c.a: idefix_shim.o vendor/cJSON.o
 	ar rcs $@ $^
@@ -40,7 +40,9 @@ bundle: idefix
 		patchelf --set-rpath '$$ORIGIN' bundle/idefix \
 		|| echo "warn: patchelf missing; with-max exports LD_LIBRARY_PATH as fallback" ; \
 	else \
-		install_name_tool -delete_rpath "$$(otool -l bundle/idefix | grep -A2 LC_RPATH | grep path | head -1 | awk '{print $$2}')" bundle/idefix || true ; \
+		while otool -l bundle/idefix | grep -q LC_RPATH; do \
+			install_name_tool -delete_rpath "$$(otool -l bundle/idefix | grep -A2 LC_RPATH | grep path | head -1 | awk '{print $$2}')" bundle/idefix || break ; \
+		done ; \
 		install_name_tool -add_rpath @executable_path bundle/idefix ; \
 	fi
 

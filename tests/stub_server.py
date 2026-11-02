@@ -6,7 +6,7 @@ Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | m
        | flaky | bigusage | ctxerr | ctxbig | loop | weirdname | binout
        | chunked | envdump | cfdiff | badmarkup | injname | redirnoop
        | flood | many | markup | think | finalans | stall | detach
-       | reasoning | thinkleak
+       | reasoning | thinkleak | err500 | argstr
 """
 import json
 import os
@@ -86,6 +86,9 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("STUB body: %s\n" % json.dumps(body.get("messages", []))[:4000])
         if MODE == "flaky" and not STATE["fired"]:
             STATE["fired"] = True
+            reply(self, 500, {"error": {"message": "boom"}})
+            return
+        if MODE == "err500":
             reply(self, 500, {"error": {"message": "boom"}})
             return
         if MODE == "ctxerr" and n_tool > 0 and not STATE["fired"]:
@@ -268,18 +271,6 @@ class Handler(BaseHTTPRequestHandler):
                     )],
                     finish="tool_calls",
                 )
-            elif MODE == "editloose":
-                # bash calls `idefix edit` with a marker-free block;
-                # --edit-loose reaches the subprocess via the environment
-                resp = msg_response(
-                    calls=[tool_call(
-                        "call_l",
-                        "printf 'x = 1\n' > e.py\n"
-                        "printf 'x = 1\n=======\nx = 9\n' | idefix edit e.py\n"
-                        "cat e.py",
-                    )],
-                    finish="tool_calls",
-                )
             elif MODE == "bareargs":
                 # arguments is raw command text, not JSON at all
                 resp = msg_response(
@@ -297,6 +288,16 @@ class Handler(BaseHTTPRequestHandler):
                         "id": "call_s", "type": "function",
                         "function": {"name": "bash",
                                      "arguments": '"echo stringarg-ok"'},
+                    }],
+                    finish="tool_calls",
+                )
+            elif MODE == "argstr":
+                # arguments is a bare JSON string, not an object
+                resp = msg_response(
+                    calls=[{
+                        "id": "call_a", "type": "function",
+                        "function": {"name": "bash",
+                                     "arguments": '"ls"'},
                     }],
                     finish="tool_calls",
                 )

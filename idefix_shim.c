@@ -76,7 +76,7 @@ extern char **environ;
 
 char **shim_scrubbed_env(void) {
     static const char *pats[] = {
-        "key", "token", "secret", "password", "credential"};
+        "key", "token", "secret", "password", "credential", "auth", "pwd"};
     static char *empty[] = {NULL};
     int n = 0;
     while (environ[n]) n++;
@@ -87,14 +87,14 @@ char **shim_scrubbed_env(void) {
         char *e = environ[i];
         char *eq = strchr(e, '=');
         size_t name_len = eq ? (size_t)(eq - e) : strlen(e);
-        /* match on a lowercased copy of the name so api_key and API_KEY
-           both drop; names longer than the buffer cannot contain a
-           credential marker anyway */
-        char lname[128];
-        size_t nl = name_len < sizeof(lname) - 1 ? name_len : sizeof(lname) - 1;
-        for (size_t k = 0; k < nl; k++)
+        /* match on a lowercased copy of the whole name so api_key and
+           API_KEY both drop; on alloc failure drop the var rather than
+           risk leaking a credential */
+        char *lname = malloc(name_len + 1);
+        if (!lname) continue;
+        for (size_t k = 0; k < name_len; k++)
             lname[k] = (char)tolower((unsigned char)e[k]);
-        lname[nl] = 0;
+        lname[name_len] = 0;
         int drop = 0;
         for (size_t k = 0; k < sizeof(pats) / sizeof(pats[0]); k++) {
             if (strstr(lname, pats[k])) {
@@ -102,6 +102,7 @@ char **shim_scrubbed_env(void) {
                 break;
             }
         }
+        free(lname);
         if (!drop) out[j++] = e;
     }
     out[j] = NULL;

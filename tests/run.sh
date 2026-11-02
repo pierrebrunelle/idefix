@@ -109,13 +109,6 @@ check "loop exit" 2 "$rc"
 grep -q "loop_warning" /tmp/stub_loop.log && echo "PASS loop warning" || { echo "FAIL loop warning"; cat /tmp/stub_loop.log; FAIL=1; }
 grep -q '"stop":true' "$IDEFIX_STATE_DIR"/sessions/*/journal.jsonl 2>/dev/null && echo "PASS loop doom stop" || { echo "FAIL loop doom stop"; FAIL=1; }
 
-# 13doomwarn. --doom-warn: 5th repeat returns a warn result and loops once more;
-# the repeat after that still stops with exit 2
-out=$(run_mode loop ./idefix --repo . --max-requests 8 --doom-warn "task" 2>/dev/null); rc=$?
-check "doomwarn exit" 2 "$rc"
-grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doom warn result" || { echo "FAIL doom warn result"; cat /tmp/stub_loop.log; FAIL=1; }
-find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"warn":true' {} \; 2>/dev/null | grep -q . && echo "PASS doom warn journal" || { echo "FAIL doom warn journal"; FAIL=1; }
-
 # 13esc. --doom-escalate: guard fire warns and arms one boosted-temperature
 # request; the repeat after that still stops with exit 2
 find "$IDEFIX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
@@ -156,17 +149,6 @@ check "medit exit" 0 "$rc"
 grep -q "block(s) applied" /tmp/stub_medit.log && grep -q "x = 9" /tmp/stub_medit.log && echo "PASS medit apply" || { echo "FAIL medit apply"; cat /tmp/stub_medit.log; FAIL=1; }
 rm -f e.py
 
-# 13d2. editloose: marker-free blocks fail loudly by default, apply under
-# --edit-loose (env reaches the `idefix edit` subprocess)
-out=$(run_mode editloose ./idefix --repo . "task" 2>/dev/null); rc=$?
-check "editloose-off exit" 0 "$rc"
-grep -q "no SEARCH/REPLACE" /tmp/stub_editloose.log && echo "PASS editloose strict default" || { echo "FAIL editloose strict default"; cat /tmp/stub_editloose.log; FAIL=1; }
-rm -f e.py
-out=$(run_mode editloose ./idefix --repo . --edit-loose "task" 2>/dev/null); rc=$?
-check "editloose exit" 0 "$rc"
-grep -q "block(s) applied" /tmp/stub_editloose.log && grep -q "x = 9" /tmp/stub_editloose.log && echo "PASS editloose apply" || { echo "FAIL editloose apply"; cat /tmp/stub_editloose.log; FAIL=1; }
-rm -f e.py
-
 # 13d3. args-repair: raw and JSON-string argument shapes error by default,
 # run under --args-repair
 out=$(run_mode bareargs ./idefix --repo . "task" 2>/dev/null); rc=$?
@@ -178,11 +160,6 @@ grep -q "repair-ok" /tmp/stub_bareargs.log && echo "PASS bareargs repair" || { e
 out=$(run_mode strargs ./idefix --repo . --args-repair "task" 2>/dev/null); rc=$?
 check "strargs exit" 0 "$rc"
 grep -q "stringarg-ok" /tmp/stub_strargs.log && echo "PASS strargs repair" || { echo "FAIL strargs repair"; cat /tmp/stub_strargs.log; FAIL=1; }
-
-# 13d4. warn-hint: no-op write warning names the cause and `idefix edit`
-out=$(run_mode sednoop ./idefix --repo . --warn-hint "task" 2>/dev/null); rc=$?
-check "warnhint exit" 0 "$rc"
-grep -q "regex metachars" /tmp/stub_sednoop.log && grep -q "idefix edit" /tmp/stub_sednoop.log && echo "PASS warnhint hint" || { echo "FAIL warnhint hint"; cat /tmp/stub_sednoop.log; FAIL=1; }
 
 # 13e. ediff: changed file -> compact unified diff in tool result (non-bare)
 out=$(run_mode ediff ./idefix --repo . "task" 2>/dev/null); rc=$?
@@ -431,9 +408,9 @@ out=$(run_mode normal ./idefix --repo . -- "-weird-task" 2>/dev/null); rc=$?
 check "dashdash task exit" 0 "$rc"
 check "dashdash answer" "Done." "$out"
 
-# 31. --max-requests counts retries: cap 1 + flaky 500 -> no retry, exit 3
+# 31. --max-requests counts retries: cap 1 + flaky 500 -> no retry, exit 2
 out=$(run_mode flaky ./idefix --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
-check "cap counts retries exit" 3 "$rc"
+check "cap counts retries exit" 2 "$rc"
 
 # 32. --bare keeps v1 wire behavior: context 400 -> exit 3, never compacts
 out=$(run_mode ctxerr ./idefix --repo . --bare "task" 2>/dev/null); rc=$?
@@ -475,5 +452,28 @@ python3 -c "import json;d=json.load(open('/tmp/idefix_cf.json'));t=[m for m in d
 run_mode cfdiff ./idefix --bare --repo . --transcript /tmp/idefix_cf_bare.json "task" >/dev/null 2>&1
 python3 -c "import json;d=json.load(open('/tmp/idefix_cf_bare.json'));assert 'changed_files' not in json.dumps(d)" && echo "PASS bare omits changed_files" || { echo "FAIL bare omits changed_files"; FAIL=1; }
 rm -f cf-out.txt
+
+# 38. strict edit resync: a block missing >>>>>>> REPLACE dies loudly even
+# when a complete block follows; the target file stays byte-identical
+printf 'foo\nbaz\n' > resync.txt
+printf '<<<<<<< SEARCH\nfoo\n=======\nbar\n<<<<<<< SEARCH\nbaz\n=======\nqux\n>>>>>>> REPLACE\n' | ./idefix edit resync.txt >/dev/null 2>/tmp/idefix_resync_err.txt; rc=$?
+check "edit resync exit" 1 "$rc"
+grep -q "REPLACE" /tmp/idefix_resync_err.txt && echo "PASS resync names terminator" || { echo "FAIL resync msg"; cat /tmp/idefix_resync_err.txt; FAIL=1; }
+printf 'foo\nbaz\n' | cmp -s - resync.txt && echo "PASS resync file unchanged" || { echo "FAIL resync wrote"; cat resync.txt; FAIL=1; }
+rm -f resync.txt /tmp/idefix_resync_err.txt
+
+# 39. err500: every chat request 500s; retry hits the request budget -> exit 2
+out=$(run_mode err500 ./idefix --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
+check "err500 budget exit" 2 "$rc"
+
+# 40. --bare forces --args-repair off: string arguments error like plain --bare
+out=$(run_mode argstr ./idefix --repo . --bare --args-repair "task" 2>/dev/null); rc=$?
+check "bare argstr exit" 0 "$rc"
+grep -q "missing or empty command" /tmp/stub_argstr.log && echo "PASS bare argstr repair off" || { echo "FAIL bare argstr repair ran"; cat /tmp/stub_argstr.log; FAIL=1; }
+
+# 41. zero bounds die at parse: --max-requests 0 -> usage error, no request
+out=$(./idefix --repo . --max-requests 0 "task" 2>&1); rc=$?
+check "zero bound exit" 64 "$rc"
+echo "$out" | grep -q "max-requests" && echo "PASS zero bound msg" || { echo "FAIL zero bound msg: $out"; FAIL=1; }
 
 exit $FAIL

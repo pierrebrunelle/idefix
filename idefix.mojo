@@ -44,17 +44,13 @@ struct Config(Copyable):
     var max_prompt_tokens: Int
     var max_calls_per_response: Int
     var temperature: Float64
-    var has_temperature: Bool
     var transcript: String
     var verbose: Bool
     var compact_at: Int
     var compact_keep: Int
     var retries: Int
     var loop_guard: Bool
-    var doom_warn: Bool
     var doom_escalate: Bool
-    var edit_loose: Bool
-    var warn_hint: Bool
     var args_repair: Bool
     var notify: String
     var state_root: String
@@ -81,17 +77,13 @@ struct Config(Copyable):
         self.max_prompt_tokens = 0
         self.max_calls_per_response = 8
         self.temperature = 0.0
-        self.has_temperature = True
         self.transcript = ""
         self.verbose = False
         self.compact_at = 24000
         self.compact_keep = 6
         self.retries = 3
         self.loop_guard = True
-        self.doom_warn = False
         self.doom_escalate = False
-        self.edit_loose = False
-        self.warn_hint = False
         self.args_repair = False
         self.notify = ""
         self.state_root = ""
@@ -105,7 +97,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-warn --doom-escalate --edit-loose --warn-hint --args-repair --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-escalate --args-repair --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -123,10 +115,12 @@ def read_file(path: String) raises -> String:
     _ = external_call["fseek", c_int](fp, c_int(0), c_int(0))
     var buf = List[UInt8](capacity=Int(sz) + 1)
     buf.resize(Int(sz), 0)
-    _ = external_call["fread", c_size_t](
+    var got = external_call["fread", c_size_t](
         buf.unsafe_ptr(), c_size_t(1), c_size_t(sz), fp
     )
     _ = external_call["fclose", c_int](fp)
+    if Int(got) != Int(sz):
+        raise Error("short read on " + path)
     return String(unsafe_from_utf8=buf^)
 
 
@@ -171,7 +165,6 @@ def parse_args() raises -> Config:
                 # wire, which is not valid JSON.
                 if cfg.temperature != cfg.temperature or (cfg.temperature - cfg.temperature) != 0.0:
                     die("invalid value for --temperature: " + v + " (must be finite)", 64)
-                cfg.has_temperature = True
             elif arg == "--notify":
                 cfg.notify = v
             elif arg == "--state-dir":
@@ -196,8 +189,14 @@ def parse_args() raises -> Config:
                 n = Int(v)
             except:
                 die("invalid integer for " + arg + ": " + v, 64)
-            if n < 0:
-                die("invalid value for " + arg + ": " + v + " (must be >= 0)", 64)
+            # off-switch flags accept 0 (--retries 0, --compact-at 0, ...);
+            # the resource bounds require a positive value
+            var zero_ok = (
+                arg == "--retries" or arg == "--max-prompt-tokens"
+                or arg == "--compact-at" or arg == "--compact-keep"
+            )
+            if n < 0 or (n == 0 and not zero_ok):
+                die("invalid value for " + arg + ": " + v, 64)
             if arg == "--max-requests":
                 cfg.max_requests = n
             elif arg == "--max-seconds":
@@ -220,14 +219,8 @@ def parse_args() raises -> Config:
                 cfg.retries = n
         elif arg == "--no-loop-guard":
             cfg.loop_guard = False
-        elif arg == "--doom-warn":
-            cfg.doom_warn = True
         elif arg == "--doom-escalate":
             cfg.doom_escalate = True
-        elif arg == "--edit-loose":
-            cfg.edit_loose = True
-        elif arg == "--warn-hint":
-            cfg.warn_hint = True
         elif arg == "--args-repair":
             cfg.args_repair = True
         elif arg == "--continue":
@@ -307,7 +300,8 @@ def parse_args() raises -> Config:
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
-        cfg.doom_warn = False
+        cfg.doom_escalate = False
+        cfg.args_repair = False
     if cfg.sandbox:
         if not bindings.file_exists("/usr/bin/sandbox-exec"):
             die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
@@ -383,19 +377,48 @@ def looks_write(cmd: String) -> Bool:
     for i in range(len(marks)):
         if cmd.find(marks[i]) >= 0:
             return True
-    # '>' writes a file unless it is an fd duplicate (2>&1, >&2), a
-    # comparison (>=, =>) or an arrow (->); '>' in '>>' still counts
+    # '>' writes a file unless it is an fd duplicate (2>&1, >&2, >&-), a
+    # comparison (>=, =>) or an arrow (->); '>' in '>>' still counts, and
+    # bash's '&> file' / '>& file' write too. A redirect onto /dev/null
+    # writes nothing in the repo, so keep scanning past it.
     var bs = cmd.as_bytes()
-    for i in range(cmd.byte_length()):
+    var bl = cmd.byte_length()
+    for i in range(bl):
         if Int(bs[i]) != 0x3E:
             continue
         var prev = 0x20
         var nxt = 0x20
         if i > 0:
             prev = Int(bs[i - 1])
-        if i + 1 < cmd.byte_length():
+        if i + 1 < bl:
             nxt = Int(bs[i + 1])
-        if prev != 0x26 and prev != 0x2D and prev != 0x3D and nxt != 0x3D and nxt != 0x26:
+        if prev == 0x2D or prev == 0x3D or nxt == 0x3D:
+            continue
+        if nxt == 0x26:
+            # '>&' is an fd duplicate only before a digit or '-'
+            var nn = 0x20
+            if i + 2 < bl:
+                nn = Int(bs[i + 2])
+            if (nn >= 0x30 and nn <= 0x39) or nn == 0x2D:
+                continue
+        # skip '>'/'&' operators and whitespace to the redirect target
+        var j = i + 1
+        if j < bl and Int(bs[j]) == 0x3E:
+            j += 1
+        if j < bl and Int(bs[j]) == 0x26:
+            j += 1
+        while j < bl and (Int(bs[j]) == 0x20 or Int(bs[j]) == 0x09):
+            j += 1
+        var k = j
+        while k < bl:
+            var c = Int(bs[k])
+            if (
+                c == 0x20 or c == 0x09 or c == 0x3B or c == 0x26
+                or c == 0x7C or c == 0x28 or c == 0x29
+            ):
+                break
+            k += 1
+        if String(cmd[byte= j : k]) != "/dev/null":
             return True
     return False
 
@@ -438,17 +461,14 @@ def write_status(cfg: Config, st: TurnStats, extra: String):
 
 
 def build_body(cfg: Config, history: String, boost: Bool = False) -> String:
-    var temp = String("")
-    if cfg.has_temperature:
-        var t = cfg.temperature
-        if boost:
-            t = 0.6
-        temp = ',"temperature":' + String(t)
+    var t = cfg.temperature
+    if boost:
+        t = 0.6
     return (
         '{"model":'
         + bindings.json_quote(cfg.model)
         + ',"stream":false'
-        + temp
+        + ',"temperature":' + String(t)
         + ',"tools":['
         + TOOLS
         + '],"messages":['
@@ -556,7 +576,42 @@ def rebuild_history(journal_text: String, system_msg: String) raises -> String:
 
 def is_ctx_error(resp: String) -> Bool:
     var low = resp.lower()
-    return low.find("context") >= 0 or low.find("too long") >= 0
+    return (
+        low.find("context") >= 0 or low.find("too long") >= 0
+        or low.find("maximum context length") >= 0
+        or low.find("reduce the length") >= 0
+        or low.find("too many tokens") >= 0
+    )
+
+
+def transport_fatal(code: Int, resp: String) -> Bool:
+    # CURL_ERROR 23 (memstream write) and 63 (http-bytes cap) are
+    # deterministic; retrying them only spends request budget
+    return code == 0 and (
+        resp.find("CURL_ERROR:23") >= 0 or resp.find("CURL_ERROR:63") >= 0
+    )
+
+
+def snapshot_find(cfg: Config, hasher: String) -> String:
+    # hash+size listing under cfg.repo for changed-file detection: .git and
+    # the state dirs are pruned, and the session dir too when it lives
+    # inside the repo (realpath both sides: --repo may be relative)
+    var snap = "find . "
+    if cfg.session_dir != "":
+        var rrepo = bindings.realpath(cfg.repo)
+        var rsd = bindings.realpath(cfg.session_dir)
+        if rsd.find(rrepo + "/") == 0:
+            var rel = String(rsd[byte= rrepo.byte_length() + 1 :])
+            snap += (
+                "-path '" + ("./" + rel).replace("'", "'\\''") + "' -prune -o "
+            )
+    snap += (
+        "\\( -name .git -o -name .max-state -o -name .idefix-state \\) -prune -o "
+        + "-type f \\( -size -50M -exec " + hasher
+        + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
+        + " 2>/dev/null | sort"
+    )
+    return snap
 
 
 struct TurnStats(Copyable):
@@ -589,8 +644,11 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var exit_code = 0
     var final = ""
     var doom_armed = False
-    # per-turn budget: the REPL shares st across turns
+    # per-turn state: the REPL shares st across turns
     st.requests = 0
+    st.escalate_next = False
+    st.cmd_repeats = 0
+    st.last_cmd = ""
     while st.requests < cfg.max_requests:
         if bindings.now_seconds() > deadline:
             bindings.eprint("[idefix] --max-seconds exceeded")
@@ -601,14 +659,20 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
             cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
         )
-        st.escalate_next = False
         st.requests += 1
         var code = r[0]
         var resp = r[1]
+        if code != 0:
+            # a transport failure never reached the server; keep the
+            # armed boost for the retry instead of spending it silently
+            st.escalate_next = False
         vlog(cfg, "request " + String(st.requests) + " -> http " + String(code))
         var attempt = 0
-        while (code == 0 or code >= 500) and attempt < cfg.retries and st.requests < cfg.max_requests:
-            # code 0 is a transport error; 5xx is retryable
+        # code 0 is a transport error; 5xx is retryable
+        while (
+            (code == 0 or code >= 500) and not transport_fatal(code, resp)
+            and attempt < cfg.retries and st.requests < cfg.max_requests
+        ):
             if bindings.now_seconds() > deadline:
                 break
             attempt += 1
@@ -627,12 +691,14 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 bindings.sleep_ms(min(backoff_ms, left_ms))
             req_ms = (deadline - bindings.now_seconds()) * 1000
             r = bindings.http_post(
-                cfg.base_url + "/chat/completions", build_body(cfg, history),
+                cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
                 cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
             )
             st.requests += 1
             code = r[0]
             resp = r[1]
+            if code != 0:
+                st.escalate_next = False
         if code == 0 and (
             bindings.now_seconds() > deadline or resp.find("CURL_ERROR:28") >= 0
         ):
@@ -654,15 +720,21 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 if st.requests < cfg.max_requests:
                     req_ms = (deadline - bindings.now_seconds()) * 1000
                     r = bindings.http_post(
-                        cfg.base_url + "/chat/completions", build_body(cfg, history),
+                        cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
                         cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
                     )
                     st.requests += 1
                     code = r[0]
                     resp = r[1]
+                    if code != 0:
+                        st.escalate_next = False
         if code != 200:
             bindings.eprint("[idefix] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
-            exit_code = 3
+            if st.requests >= cfg.max_requests and not transport_fatal(code, resp):
+                # the budget is what forbids any recovery attempt
+                exit_code = 2
+            else:
+                exit_code = 3
             break
         var root = bindings.cjson_parse(resp)
         if not root:
@@ -796,28 +868,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 st.last_cmd = cmd
                             var doom_now = cfg.loop_guard and st.cmd_repeats >= 4
                             var mark = String("")
+                            var qmark = String("")
                             var hasher = String("md5 -r")
                             var prof = String("")
                             var clone_ok = False
                             var tree = String("")
-                            if doom_now and cfg.doom_warn and not doom_armed:
-                                # warn once instead of killing: the model sees
-                                # the error and gets one turn to stop on its own
-                                doom_armed = True
-                                result = (
-                                    '{"error":"same command repeated 5 times;'
-                                    + ' do not re-issue it - run a different check'
-                                    + ' or reply with your final answer.'
-                                    + ' Repeating it stops the run."}'
-                                )
-                                journal(
-                                    cfg,
-                                    '{"ev":"loop","ts":'
-                                    + String(bindings.now_seconds())
-                                    + ',"cmd":' + bindings.json_quote(cmd)
-                                    + ',"warn":true}',
-                                )
-                            elif doom_now and cfg.doom_escalate and not doom_armed:
+                            if doom_now and cfg.doom_escalate and not doom_armed:
                                 # warn once + one boosted-temperature request to
                                 # escape the deterministic repeat; a further
                                 # repeat still stops the run
@@ -865,25 +921,13 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                         mark = cfg.session_dir + "/cmdmark-" + String(bindings.pid())
                                         if cfg.session_dir == "":
                                             mark = "/tmp/idefix-cmdmark-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
-                                        var snap = "find . "
-                                        if cfg.session_dir.find(cfg.repo + "/") == 0:
-                                            snap += "-path './" + String(
-                                                cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
-                                            ) + "' -prune -o "
-                                        # files >=50M skip hashing; a size line keeps
-                                        # them visible to changed_files (+48M overlaps
-                                        # the boundary so nothing falls between)
-                                        snap += (
-                                            "\\( -name .git -o -name .max-state -o -name .idefix-state \\) -prune -o "
-                                            + "-type f \\( -size -50M -exec " + hasher
-                                            + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
-                                            + " 2>/dev/null | sort > " + mark
-                                        )
+                                        qmark = "'" + mark.replace("'", "'\\''") + "'"
+                                        var snap = snapshot_find(cfg, hasher) + " > " + qmark
                                         _ = bindings.run_capture(snap, cfg.repo, 64, housekeeping_ms(deadline, 30000), False)
                                         tree = "/tmp/idefix-tree-" + String(Int(bindings.now_seconds() * 1000)) + "-" + String(bindings.pid())
                                         var cr = bindings.run_capture(
                                             "rm -rf " + tree + "; cp -Rc . " + tree,
-                                            cfg.repo, 64, 60000, False,
+                                            cfg.repo, 64, housekeeping_ms(deadline, 60000), False,
                                         )
                                         clone_ok = cr[1] == 0
                                 var cmd_timeout = cfg.max_command_ms
@@ -900,7 +944,14 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     vlog(cfg, "profile: " + prof)
                                 var pdir = String("")
                                 if not cfg.bare:
+                                    # run_capture prepends pdir to PATH, so putting
+                                    # the existing PATH first appends bindir: a
+                                    # repo-local git/python3 cannot shadow system
+                                    # tools but `idefix edit` still resolves
+                                    var syspath = getenv("PATH")
                                     pdir = cfg.bindir
+                                    if syspath != "":
+                                        pdir = syspath + ":" + cfg.bindir
                                 var rc = bindings.run_capture(
                                     cmd, cfg.repo, cfg.max_output_bytes, cmd_timeout, True, prof, pdir
                                 )
@@ -934,19 +985,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                 if mark != "":
                                     # same snapshot again; lines present on only one
                                     # side are created, modified or deleted files
-                                    var dcmd = "find . "
-                                    if cfg.session_dir.find(cfg.repo + "/") == 0:
-                                        dcmd += "-path './" + String(
-                                            cfg.session_dir[byte= cfg.repo.byte_length() + 1 :]
-                                        ) + "' -prune -o "
-                                    dcmd += (
-                                        "\\( -name .git -o -name .max-state -o -name .idefix-state \\) -prune -o "
-                                        + "-type f \\( -size -50M -exec " + hasher
-                                        + " {} + -o -size +48M -exec sh -c 'for f do echo \"big:$(wc -c <\"$f\" | tr -d \"[:space:]\") $f\"; done' sh {} + \\)"
-                                        + " 2>/dev/null"
-                                        + " | sort > " + mark + ".after; "
-                                        + "{ comm -13 " + mark + " " + mark + ".after; "
-                                        + "comm -23 " + mark + " " + mark + ".after; }"
+                                    var qafter = "'" + (mark + ".after").replace("'", "'\\''") + "'"
+                                    var dcmd = (
+                                        snapshot_find(cfg, hasher)
+                                        + " > " + qafter + "; "
+                                        + "{ comm -13 " + qmark + " " + qafter + "; "
+                                        + "comm -23 " + qmark + " " + qafter + "; }"
                                         # md5sum separates with two spaces; sed
                                         # strips field 1 plus all spacing so the
                                         # filename survives on both hashers
@@ -989,27 +1033,16 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                                     ',"diff":' + bindings.json_quote(dtxt)
                                                 )
                                         if cf == "" and rc[1] == 0 and looks_write(cmd):
-                                            var wtxt = String(
-                                                "exit 0 but no files"
-                                                + " changed; the edit may not have applied"
-                                            )
-                                            if cfg.warn_hint:
-                                                wtxt += (
-                                                    "; if a pattern edit"
-                                                    + " (sed/perl/awk) matched"
-                                                    + " nothing, regex metachars"
-                                                    + " (* . [ ]) may be the cause -"
-                                                    + " use 'idefix edit FILE <<EOF'"
-                                                    + " with <<<<<<< SEARCH/=======/"
-                                                    + ">>>>>>> REPLACE blocks"
-                                                )
                                             result += (
                                                 ',"warning":'
-                                                + bindings.json_quote(wtxt)
+                                                + bindings.json_quote(
+                                                    "exit 0 but no files"
+                                                    + " changed; the edit may not have applied"
+                                                )
                                             )
                                     # tree/marks are per-command temp state;
                                     # clean up even when the diff loop did not run
-                                    var cl = "rm -f '" + mark + "' '" + mark + ".after'"
+                                    var cl = "rm -f " + qmark + " " + qafter
                                     if clone_ok:
                                         cl += "; rm -rf '" + tree + "'"
                                     _ = bindings.run_capture(
@@ -1050,6 +1083,27 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             if bindings.now_seconds() > deadline:
                 bindings.eprint("[idefix] --max-seconds exceeded")
                 exit_code = 2
+            # the loop-tail token checks only run after a tool call
+            if cfg.max_prompt_tokens > 0 and st.last_prompt_tokens > cfg.max_prompt_tokens:
+                bindings.eprint("[idefix] --max-prompt-tokens exceeded on final response")
+                journal(
+                    cfg,
+                    '{"ev":"over_budget","ts":' + String(bindings.now_seconds())
+                    + ',"prompt_tokens":' + String(st.last_prompt_tokens)
+                    + ',"limit":' + String(cfg.max_prompt_tokens) + "}",
+                )
+            elif cfg.compact_at > 0 and st.last_prompt_tokens > cfg.compact_at:
+                bindings.eprint(
+                    "[idefix] prompt_tokens=" + String(st.last_prompt_tokens)
+                    + " over --compact-at " + String(cfg.compact_at)
+                    + " on final response"
+                )
+                journal(
+                    cfg,
+                    '{"ev":"over_budget","ts":' + String(bindings.now_seconds())
+                    + ',"prompt_tokens":' + String(st.last_prompt_tokens)
+                    + ',"limit":' + String(cfg.compact_at) + "}",
+                )
             break
         if msg_owner:
             bindings.cjson_del(msg_owner)
@@ -1094,7 +1148,10 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
     )
     if cfg.notify != "":
         try:
-            _ = bindings.run_capture(cfg.notify, cfg.repo, 8192, 30000, False)
+            _ = bindings.run_capture(
+                cfg.notify, cfg.repo, 8192,
+                housekeeping_ms(st.start_s + cfg.max_seconds, 30000), False,
+            )
         except:
             pass
     bindings.eprint(
@@ -1110,7 +1167,7 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
     external_call["exit", c_int](c_int(code))
 
 
-def read_stdin() -> String:
+def read_stdin() raises -> String:
     var out = String("")
     var buf = List[UInt8](capacity=8192)
     buf.resize(8192, 0)
@@ -1118,7 +1175,9 @@ def read_stdin() -> String:
         var n = external_call["read", c_ssize_t](
             c_int(0), buf.unsafe_ptr(), c_size_t(8192)
         )
-        if n <= 0:
+        if n < 0:
+            raise Error("stdin read failed")
+        if n == 0:
             break
         out += String(unsafe_from_utf8=buf[: Int(n)])
     return out
@@ -1154,10 +1213,14 @@ def run_edit(path: String) raises -> Int:
     except e:
         bindings.eprint("idefix edit: cannot read " + path + ": " + String(e))
         return 1
-    var spec = read_stdin()
+    var spec = String("")
+    try:
+        spec = read_stdin()
+    except e:
+        bindings.eprint("idefix edit: cannot read stdin: " + String(e))
+        return 1
     var pos = 0
     var applied = 0
-    var loose = getenv("IDEFIX_EDIT_LOOSE") != ""
     var S = "<<<<<<< SEARCH"
     var M = "======="
     var E = ">>>>>>> REPLACE"
@@ -1165,13 +1228,16 @@ def run_edit(path: String) raises -> Int:
         var sb = spec.find(S, pos)
         if sb < 0:
             break
+        # a block missing ======= or >>>>>>> REPLACE must not steal the
+        # next block's markers: both searches stop at the next <<<<<<< SEARCH
+        var limit = spec.find(S, sb + S.byte_length())
+        if limit < 0:
+            limit = spec.byte_length()
         var mb = spec.find("\n" + M + "\n", sb)
         var eb = spec.find("\n" + E, mb if mb >= 0 else sb)
-        if mb < 0 or eb < 0:
-            if not loose:
-                bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)" + EDIT_HINT)
-                return 1
-            break
+        if mb < 0 or mb >= limit or eb < 0 or eb >= limit:
+            bindings.eprint("idefix edit: malformed block (missing ======= or >>>>>>> REPLACE)" + EDIT_HINT)
+            return 1
         var old = String(spec[byte= sb + S.byte_length() + 1 : mb])
         var new = String(spec[byte= mb + M.byte_length() + 2 : eb])
         var hits = find_all(text, old)
@@ -1193,49 +1259,6 @@ def run_edit(path: String) raises -> Int:
         )
         applied += 1
         pos = eb + E.byte_length()
-    if applied == 0 and loose:
-        # marker-free fallback: `old\n=======\nnew` segments, a line starting
-        # >>>>>>> ends a new part, a leading <<<<<<< line is dropped, an
-        # unmatched tail segment is ignored
-        var segs = spec.split("\n" + M + "\n")
-        var i = 0
-        while i + 1 < len(segs):
-            var old = String(segs[i])
-            var new = String(segs[i + 1])
-            if i == 0 and old.find("<<<<<<<") == 0:
-                var nl = old.find("\n")
-                if nl >= 0:
-                    var rest = String(old[byte= nl + 1 :])
-                    old = rest
-            var cx = new.find("\n>>>>>>>")
-            if cx >= 0:
-                var kept = String(new[byte= : cx])
-                new = kept
-            elif new.find(">>>>>>>") == 0:
-                new = String("")
-            if cx < 0 and new.endswith("\n"):
-                # the last segment can keep the spec's trailing newline
-                var trimmed = String(new[byte= : new.byte_length() - 1])
-                new = trimmed
-            var hits = find_all(text, old)
-            if len(hits) != 1:
-                var first = String(old.split("\n")[0])
-                if first == "" and old.byte_length() > 1:
-                    first = String(old.split("\n")[1])
-                var fhits = find_all(text, first)
-                var near = String("")
-                for f in range(min(len(fhits), 4)):
-                    near += "," + String(count_lines(text, fhits[f]))
-                bindings.eprint(
-                    "idefix edit: SEARCH matched " + String(len(hits)) + " times in " + path
-                    + (" (anchors near lines " + near[byte=1:] + ")" if len(fhits) > 0 else "")
-                )
-                return 1
-            text = String(
-                text[byte= : hits[0]] + new + text[byte= hits[0] + old.byte_length() :]
-            )
-            applied += 1
-            i += 2
     if applied == 0:
         bindings.eprint("idefix edit: no SEARCH/REPLACE blocks on stdin" + EDIT_HINT)
         return 1
@@ -1244,19 +1267,26 @@ def run_edit(path: String) raises -> Int:
         var has_py = bindings.run_capture("command -v python3", ".", 64, 5000, False)
         if has_py[1] == 0 and String(has_py[0].strip()) != "":
             var tmp = path + ".maxedit-tmp"
-            _ = bindings.write_file(tmp, text)
             var qtmp = "'" + tmp.replace("'", "'\\''") + "'"
-            # compile() parses in memory; py_compile would litter __pycache__
-            var chk = bindings.run_capture(
-                "python3 -c 'import sys;"
-                + "compile(open(sys.argv[1]).read(),sys.argv[1],\"exec\")' "
-                + qtmp,
-                ".", 4096, 15000, False,
-            )
-            _ = bindings.run_capture("rm -f " + qtmp, ".", 64, 5000, False)
-            if chk[1] != 0:
-                bindings.eprint("idefix edit: result does not compile:\n" + chk[0].strip())
+            if not bindings.write_file(tmp, text):
+                _ = bindings.run_capture("rm -f " + qtmp, ".", 64, 5000, False)
+                bindings.eprint("idefix edit: cannot write temp file " + tmp)
                 return 1
+            # compile() parses in memory; py_compile would litter __pycache__
+            try:
+                var chk = bindings.run_capture(
+                    "python3 -c 'import sys;"
+                    + "compile(open(sys.argv[1]).read(),sys.argv[1],\"exec\")' "
+                    + qtmp,
+                    ".", 4096, 15000, False,
+                )
+                _ = bindings.run_capture("rm -f " + qtmp, ".", 64, 5000, False)
+                if chk[1] != 0:
+                    bindings.eprint("idefix edit: result does not compile:\n" + chk[0].strip())
+                    return 1
+            except e:
+                _ = bindings.run_capture("rm -f " + qtmp, ".", 64, 5000, False)
+                raise e
     if not bindings.write_file(path, text):
         bindings.eprint("idefix edit: cannot write " + path)
         return 1
@@ -1273,13 +1303,6 @@ def main() raises:
         bindings.eprint("usage: idefix edit FILE   (reads SEARCH/REPLACE blocks on stdin)")
         external_call["exit", c_int](c_int(64))
     var cfg = parse_args()
-    if cfg.edit_loose:
-        # `idefix edit` runs as a subprocess of bash commands; the flag
-        # reaches it through the environment
-        var el = "IDEFIX_EDIT_LOOSE"
-        var one = "1"
-        _ = external_call["setenv", c_int](
-            el.as_c_string_span().ptr(), one.as_c_string_span().ptr(), c_int(1))
     var st = TurnStats()
     st.start_s = bindings.now_seconds()
 
@@ -1344,8 +1367,14 @@ def main() raises:
         var (final, code) = run_turn(cfg, history, st)
         exit_code = code
         if final == "" and exit_code == 0:
+            # the placeholder is not model output; pushed as a msg it
+            # would replay on --resume as a real assistant reply
             final = "(no final answer)"
-        if final != "" and exit_code == 0:
+            journal(
+                cfg,
+                '{"ev":"no_final","ts":' + String(bindings.now_seconds()) + "}",
+            )
+        elif final != "" and exit_code == 0:
             var amsg = '{"role":"assistant","content":' + bindings.json_quote(final) + '}'
             push_msg(cfg, history, amsg)
         finish(cfg, history, st, final, exit_code)
@@ -1403,7 +1432,11 @@ def main() raises:
         var (final, code) = run_turn(cfg, history, st)
         if final == "" and code == 0:
             final = "(no final answer)"
-        if final != "" and code == 0:
+            journal(
+                cfg,
+                '{"ev":"no_final","ts":' + String(bindings.now_seconds()) + "}",
+            )
+        elif final != "" and code == 0:
             var amsg2 = '{"role":"assistant","content":' + bindings.json_quote(final) + '}'
             push_msg(cfg, history, amsg2)
         if final != "":

@@ -19,6 +19,11 @@ if [ ! -f "$ROOT/idefix" ] || [ "$ROOT/idefix" -ef "$SELF" ]; then
     ROOT="$(cd "$ROOT/.." && pwd)"
 fi
 
+# linux bundles rely on this when patchelf was unavailable at build time;
+# on macOS the binary already carries @executable_path. Exported before
+# every exec so bundled installs work for the early subcommands below too.
+export LD_LIBRARY_PATH="$ROOT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 # subcommands that never need a model server go straight to the binary
 case "${1:-}" in
     edit|-h|--help|--version) exec "$ROOT/idefix" "$@" ;;
@@ -30,12 +35,14 @@ esac
 # <state>/config (key=value) seeds unset vars; env always wins.
 conf="${IDEFIX_STATE_DIR:-${MAX_STATE_DIR:-$HOME/.idefix}}/config"
 if [ -f "$conf" ]; then
-    while IFS='=' read -r k v; do
+    # the || [ -n "$k" ] keeps a final line that lacks a trailing newline
+    while IFS='=' read -r k v || [ -n "$k" ]; do
         case "$k" in
             model)    : "${IDEFIX_MODEL:=$v}" ;;
             base_url) : "${IDEFIX_BASE_URL:=$v}" ;;
             api_key)  : "${IDEFIX_API_KEY:=$v}" ;;
             maxcli)   : "${IDEFIX_MAXCLI:=$v}" ;;
+            gpu)      : "${IDEFIX_GPU:=$v}" ;;
         esac
     done < "$conf"
 fi
@@ -84,14 +91,14 @@ served_ids() {
         curl -sf -m 2 -H "Authorization: Bearer $MAX_API_KEY" "$BASE/models"
     else
         curl -sf -m 2 "$BASE/models"
-    fi | tr ',' '\n' | sed -n 's/.*"id":"\([^"]*\)".*/\1/p'
+    fi | tr ',' '\n' | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p'
 }
 
 # The actually-loaded model where the server reports one: ollama exposes
 # /api/ps (resident model), so we don't adopt a stale id out of /models.
 loaded_id() {
     curl -sf -m 2 "${BASE%/v1}/api/ps" 2>/dev/null \
-        | tr ',' '\n' | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | head -1
+        | tr ',' '\n' | sed -n 's/.*"name" *: *"\([^"]*\)".*/\1/p' | head -1
 }
 
 started=""
@@ -129,10 +136,14 @@ else
     if [ "${MAX_GPU:-0}" != "1" ]; then
         serve_args+=(--devices cpu --quantization-encoding float32)
     fi
+    # job control puts the server in its own process group so the EXIT
+    # trap can kill max and any workers it forked, not just the direct child
+    set -m
     "$MAXCLI" "${serve_args[@]}" >"$LOG" 2>&1 &
     started=$!
+    set +m
     keep_log=""
-    trap 'kill "$started" 2>/dev/null; wait "$started" 2>/dev/null; [ -n "$LOG" ] && [ -z "$keep_log" ] && rm -f "$LOG"' EXIT
+    trap 'kill -- -"$started" 2>/dev/null; kill "$started" 2>/dev/null; wait "$started" 2>/dev/null; [ -n "$LOG" ] && [ -z "$keep_log" ] && rm -f "$LOG"' EXIT
     for _ in $(seq 1 150); do
         up && break
         sleep 2
@@ -147,9 +158,6 @@ if [ ! -f "$ROOT/idefix" ] || [ ! -x "$ROOT/idefix" ]; then
     echo "with-max: no runnable idefix binary at $ROOT/idefix" >&2
     exit 1
 fi
-# linux bundles rely on this when patchelf was unavailable at build time;
-# on macOS the binary already carries @executable_path
-export LD_LIBRARY_PATH="$ROOT${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 "$ROOT/idefix" "$@"
 rc=$?
 # Plain exit so the EXIT trap fires: kill the server we started, drop its log.

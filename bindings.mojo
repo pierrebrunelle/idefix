@@ -162,6 +162,7 @@ def http_post(
         Pointer(to=rbuf), Pointer(to=rsize)
     )
     if not fp:
+        _ = external_call["curl_slist_free_all", c_int](slist)
         _ = external_call["curl_easy_cleanup", c_int](h)
         raise Error("open_memstream failed")
     _ = external_call["curl_easy_setopt", c_int, num_fixed_args=2](
@@ -387,11 +388,11 @@ def write_file(path: String, contents: String) -> Bool:
     if not fp:
         return False
     var cs = c.as_c_string_span()
-    _ = external_call["fwrite", c_size_t](
+    var wrote = external_call["fwrite", c_size_t](
         cs.ptr(), c_size_t(1), c_size_t(c.byte_length()), fp
     )
-    _ = external_call["fclose", c_int](fp)
-    return True
+    var closed = external_call["fclose", c_int](fp)
+    return wrote == c_size_t(c.byte_length()) and closed == 0
 
 
 def mkdir_p(path: String, mode: Int = 0o700) -> Bool:
@@ -418,11 +419,11 @@ def append_file(path: String, contents: String) -> Bool:
     if not fp:
         return False
     var cs = c.as_c_string_span()
-    _ = external_call["fwrite", c_size_t](
+    var wrote = external_call["fwrite", c_size_t](
         cs.ptr(), c_size_t(1), c_size_t(c.byte_length()), fp
     )
-    _ = external_call["fclose", c_int](fp)
-    return True
+    var closed = external_call["fclose", c_int](fp)
+    return wrote == c_size_t(c.byte_length()) and closed == 0
 
 
 def is_dir(path: String) -> Bool:
@@ -487,20 +488,33 @@ def strip_markup(content: String) -> String:
 def c_argv(mut args: List[String]) raises -> raw_ptr:
     # strdup each arg: a c-string span ptr can dangle after the expression
     # that produces it, so store owned copies.
-    var ptrs = List[UInt64]()
+    var mem = external_call["calloc", raw_ptr](c_size_t(len(args) + 1), c_size_t(8))
+    if not mem:
+        raise Error("calloc failed")
+    # calloc zero-fills, so the array stays NULL-terminated and a strdup
+    # failure below can be unwound by freeing the array itself
+    var slots = mem.value().unsafe_bitcast[cstr_ptr]()
     for i in range(len(args)):
         var dup = external_call["strdup", cstr_ptr](
             args[i].as_c_string_span().ptr()
         )
-        ptrs.append(UInt64(Int(dup.value())))
-    ptrs.append(0)
-    var mem = external_call["calloc", raw_ptr](c_size_t(len(args) + 1), c_size_t(8))
-    if not mem:
-        raise Error("calloc failed")
-    var p64 = mem.value().unsafe_bitcast[UInt64]()
-    for i in range(len(ptrs)):
-        p64.unsafe_store(i, ptrs[i])
+        if not dup:
+            free_c_argv(mem)
+            raise Error("strdup failed")
+        slots[i] = dup
     return mem
+
+
+def free_c_argv(argv: raw_ptr):
+    var slots = argv.value().unsafe_bitcast[cstr_ptr]()
+    var i = 0
+    while True:
+        var e = slots[i]
+        if not e:
+            break
+        _ = external_call["free", c_int](e.value())
+        i += 1
+    _ = external_call["free", c_int](argv.value())
 
 
 def self_dir() -> String:
@@ -546,8 +560,13 @@ def run_capture(
         )
     var argv = c_argv(args)
     var fds_mem = external_call["calloc", raw_ptr](c_size_t(2), c_size_t(4))
+    if not fds_mem:
+        free_c_argv(argv)
+        raise Error("calloc failed")
     var pi = fds_mem.value().unsafe_bitcast[c_int]()
     if external_call["pipe", c_int](pi) != 0:
+        _ = external_call["free", c_int](fds_mem.value())
+        free_c_argv(argv)
         raise Error("pipe failed")
     var rfd = pi.unsafe_load(0)
     var wfd = pi.unsafe_load(1)
@@ -556,7 +575,7 @@ def run_capture(
     if pid < 0:
         _ = external_call["close", c_int](wfd)
         _ = external_call["close", c_int](rfd)
-        _ = external_call["free", c_int](argv.value())
+        free_c_argv(argv)
         raise Error("fork failed")
     if pid == 0:
         _ = external_call["setpgid", c_int](c_int(0), c_int(0))
@@ -610,9 +629,17 @@ def run_capture(
     var buf = List[UInt8](capacity=8192)
     buf.resize(8192, 0)
     var pfd_mem = external_call["calloc", raw_ptr](c_size_t(1), c_size_t(8))
+    var status: c_int = 0
+    if not pfd_mem:
+        # the child is already running: reap it before erroring out
+        _ = external_call["close", c_int](rfd)
+        _ = external_call["kill", c_int](c_int(-pid), c_int(SIGKILL))
+        _ = external_call["waitpid", c_int](pid, Pointer(to=status), c_int(0))
+        _ = external_call["shim_track_pgid", c_int](c_int(0))
+        free_c_argv(argv)
+        raise Error("calloc failed")
     var pfd32 = pfd_mem.value().unsafe_bitcast[Int32]()
     var pfd16 = pfd_mem.value().unsafe_bitcast[Int16]()
-    var status: c_int = 0
     var timed_out = False
     var child_done = False
     var start_ms = now_ms()
@@ -671,7 +698,7 @@ def run_capture(
                 break
     _ = external_call["close", c_int](rfd)
     _ = external_call["free", c_int](pfd_mem.value())
-    _ = external_call["free", c_int](argv.value())
+    free_c_argv(argv)
     if not child_done:
         # Loop exited on an error path with the child still running: never
         # leave it behind or block on it.
