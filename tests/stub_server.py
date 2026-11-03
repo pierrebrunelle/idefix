@@ -15,6 +15,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 MODE = sys.argv[2] if len(sys.argv) > 2 else "normal"
+QUIET = os.environ.get("STUB_QUIET") is not None
 STATE = {"fired": False}
 
 
@@ -76,14 +77,15 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length))
         msgs = body["messages"]
         n_tool = sum(1 for m in msgs if m.get("role") == "tool")
-        sys.stderr.write("STUB sys: %s\n" % msgs[0].get("content", ""))
-        sys.stderr.write("STUB user: %s\n" % msgs[-1].get("content", "")[:500])
-        sys.stderr.write(
-            "STUB users: %s\n"
-            % [m.get("content") for m in msgs if m.get("role") == "user"]
-        )
-        sys.stderr.write("STUB temp: %s\n" % body.get("temperature"))
-        sys.stderr.write("STUB body: %s\n" % json.dumps(body.get("messages", []))[:4000])
+        if not QUIET:
+            sys.stderr.write("STUB sys: %s\n" % msgs[0].get("content", ""))
+            sys.stderr.write("STUB user: %s\n" % msgs[-1].get("content", "")[:500])
+            sys.stderr.write(
+                "STUB users: %s\n"
+                % [m.get("content") for m in msgs if m.get("role") == "user"]
+            )
+            sys.stderr.write("STUB temp: %s\n" % body.get("temperature"))
+            sys.stderr.write("STUB body: %s\n" % json.dumps(body.get("messages", []))[:4000])
         if MODE == "flaky" and not STATE["fired"]:
             STATE["fired"] = True
             reply(self, 500, {"error": {"message": "boom"}})
@@ -330,16 +332,17 @@ class Handler(BaseHTTPRequestHandler):
             ids = {c["id"] for c in asst["tool_calls"]}
             got = {m["tool_call_id"] for m in msgs if m.get("role") == "tool"}
             ok = ids <= got
-            sys.stderr.write(
-                "STUB pairing: %s expected=%s got=%s\n" % (ok, sorted(ids), sorted(got))
-            )
-            tool_contents = [
-                m["content"] for m in msgs if m.get("role") == "tool"
-            ]
-            sys.stderr.write("STUB tool results: %s\n" % tool_contents)
-            sys.stderr.write(
-                "STUB tool json ok: %s\n" % all(_is_json(c) for c in tool_contents)
-            )
+            if not QUIET:
+                sys.stderr.write(
+                    "STUB pairing: %s expected=%s got=%s\n" % (ok, sorted(ids), sorted(got))
+                )
+                tool_contents = [
+                    m["content"] for m in msgs if m.get("role") == "tool"
+                ]
+                sys.stderr.write("STUB tool results: %s\n" % tool_contents)
+                sys.stderr.write(
+                    "STUB tool json ok: %s\n" % all(_is_json(c) for c in tool_contents)
+                )
             resp = msg_response(
                 content="Done." if ok else "PROTOCOL VIOLATION: unmatched tool results"
             )
