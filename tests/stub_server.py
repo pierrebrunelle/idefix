@@ -186,6 +186,12 @@ class Handler(BaseHTTPRequestHandler):
                     finish="tool_calls",
                     usage={"prompt_tokens": 60000, "completion_tokens": 8},
                 )
+            elif MODE == "bigwrite":
+                resp = msg_response(
+                    calls=[tool_call("call_1", "echo big > bigwrite_file.txt")],
+                    finish="tool_calls",
+                    usage={"prompt_tokens": 60000, "completion_tokens": 8},
+                )
             elif MODE == "binout":
                 resp = msg_response(
                     calls=[tool_call("call_o", "printf '\\377\\376bin'")],

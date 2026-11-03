@@ -88,6 +88,24 @@ check "bigusage answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_bigusage.log && echo "PASS bigusage cleared" || { echo "FAIL bigusage cleared"; cat /tmp/stub_bigusage.log; FAIL=1; }
 grep -q '"ev":"compact"' /tmp/idefix-state-compact/sessions/*/journal.jsonl && echo "PASS bigusage journal" || { echo "FAIL bigusage journal"; FAIL=1; }
 
+# 11b. bigwrite + --compact-rich: cleared stubs keep changed_files
+rm -rf /tmp/idefix-state-crich; rm -f bigwrite_file.txt
+out=$(run_mode bigwrite ./idefix --repo . --compact-keep 0 --compact-rich --state-dir /tmp/idefix-state-crich "task" 2>/dev/null); rc=$?
+check "compactrich exit" 0 "$rc"
+grep -q "cleared; re-run" /tmp/stub_bigwrite.log && echo "PASS compactrich cleared" || { echo "FAIL compactrich cleared"; cat /tmp/stub_bigwrite.log; FAIL=1; }
+grep -q 'cleared; re-run.*changed_files.*bigwrite_file' /tmp/stub_bigwrite.log && echo "PASS compactrich keeps cf" || { echo "FAIL compactrich cf"; cat /tmp/stub_bigwrite.log; FAIL=1; }
+rm -f bigwrite_file.txt
+
+# 11c. same run without the flag: cleared stub drops changed_files
+# (the pre-compaction request still carries the field - only match it
+# adjacent to the cleared marker so the original result can't false-hit)
+rm -rf /tmp/idefix-state-nocrich; rm -f bigwrite_file.txt
+out=$(run_mode bigwrite ./idefix --repo . --compact-keep 0 --state-dir /tmp/idefix-state-nocrich "task" 2>/dev/null); rc=$?
+check "nocrich exit" 0 "$rc"
+grep -q "cleared; re-run" /tmp/stub_bigwrite.log && echo "PASS nocrich cleared" || { echo "FAIL nocrich cleared"; cat /tmp/stub_bigwrite.log; FAIL=1; }
+grep -q 'cleared; re-run.*changed_files' /tmp/stub_bigwrite.log && { echo "FAIL nocrich kept cf"; FAIL=1; } || echo "PASS nocrich drops cf"
+rm -f bigwrite_file.txt
+
 # 12. ctxerr: 400 context-length -> compact + retry -> Done
 rm -rf /tmp/idefix-state-ctx
 out=$(run_mode ctxerr ./idefix --repo . --compact-keep 0 --state-dir /tmp/idefix-state-ctx "task" 2>/dev/null); rc=$?
@@ -207,6 +225,22 @@ check "think final" "Done." "$out"
 out=$(run_mode flood ./idefix --repo . --max-output-bytes 1000 "task" 2>/dev/null); rc=$?
 check "flood exit" 0 "$rc"
 grep -q '"discarded_bytes":[1-9]' /tmp/stub_flood.log && echo "PASS flood discarded" || { echo "FAIL flood discarded"; cat /tmp/stub_flood.log; FAIL=1; }
+
+# 13k2. flood + --spill: discarded output lands in a file the result names
+rm -rf /tmp/idefix-state-spill
+out=$(run_mode flood ./idefix --repo . --max-output-bytes 1000 --spill --state-dir /tmp/idefix-state-spill "task" 2>/dev/null); rc=$?
+check "spill exit" 0 "$rc"
+grep -q '"spilled_to":"' /tmp/stub_flood.log && echo "PASS spill field" || { echo "FAIL spill field"; cat /tmp/stub_flood.log; FAIL=1; }
+sp=$(ls /tmp/idefix-state-spill/sessions/*/spill/cmd-*.out 2>/dev/null | head -1)
+[ -n "$sp" ] && [ "$(wc -c < "$sp")" -gt 1000 ] && echo "PASS spill file has overflow" || { echo "FAIL spill file: $sp"; FAIL=1; }
+grep -q "^30000$" "$sp" 2>/dev/null && echo "PASS spill has stream tail" || { echo "FAIL spill tail"; FAIL=1; }
+
+# 13k3. flood without --spill: bytes are counted but gone
+rm -rf /tmp/idefix-state-nospill
+out=$(run_mode flood ./idefix --repo . --max-output-bytes 1000 --state-dir /tmp/idefix-state-nospill "task" 2>/dev/null); rc=$?
+check "nospill exit" 0 "$rc"
+grep -q '"discarded_bytes":[1-9]' /tmp/stub_flood.log && echo "PASS nospill discarded" || { echo "FAIL nospill discarded"; cat /tmp/stub_flood.log; FAIL=1; }
+find /tmp/idefix-state-nospill -name "cmd-*" | grep -q . && { echo "FAIL nospill wrote file"; FAIL=1; } || echo "PASS nospill no file"
 
 # 13l. many: tool_calls over the cap get a limit error, never run
 out=$(run_mode many ./idefix --repo . --max-calls-per-response 3 "task" 2>/dev/null); rc=$?
@@ -425,6 +459,14 @@ out=$(run_mode ctxerr ./idefix --repo . --bare "task" 2>/dev/null); rc=$?
 check "bare ctxerr exit" 3 "$rc"
 grep -q "cleared; re-run" /tmp/stub_ctxerr.log && { echo "FAIL bare compacted"; FAIL=1; } || echo "PASS bare no compact"
 
+# 32b. --bare also holds the experimental flags off
+out=$(run_mode bigwrite ./idefix --repo . --bare --compact-rich "task" 2>/dev/null); rc=$?
+grep -q "cleared; re-run" /tmp/stub_bigwrite.log && { echo "FAIL bare+rich compacted"; FAIL=1; } || echo "PASS bare rich off"
+rm -f bigwrite_file.txt
+rm -rf /tmp/idefix-state-barespill
+out=$(run_mode flood ./idefix --repo . --bare --max-output-bytes 1000 --spill --state-dir /tmp/idefix-state-barespill "task" 2>/dev/null); rc=$?
+grep -q '"spilled_to":"' /tmp/stub_flood.log && { echo "FAIL bare spilled"; FAIL=1; } || echo "PASS bare spill off"
+
 # 33. --bare rejects session/notify flags instead of silently dropping them
 ./idefix --repo . --bare --continue "task" >/dev/null 2>&1; check "bare continue exit" 64 "$?"
 ./idefix --repo . --bare --resume /tmp/idefix-res.jsonl "task" >/dev/null 2>&1; check "bare resume exit" 64 "$?"
@@ -483,5 +525,14 @@ grep -q "missing or empty command" /tmp/stub_argstr.log && echo "PASS bare argst
 out=$(./idefix --repo . --max-requests 0 "task" 2>&1); rc=$?
 check "zero bound exit" 64 "$rc"
 echo "$out" | grep -q "max-requests" && echo "PASS zero bound msg" || { echo "FAIL zero bound msg: $out"; FAIL=1; }
+
+# 42. repo docs bound: a 20KB AGENTS.md is truncated into the prompt
+mkdir -p /tmp/idefix-bigdoc && python3 -c "print('x'*19990)" > /tmp/idefix-bigdoc/AGENTS.md
+out=$(run_mode normal ./idefix --repo /tmp/idefix-bigdoc "task" 2>/dev/null); rc=$?
+check "bigdoc exit" 0 "$rc"
+grep -q "truncated" /tmp/stub_normal.log && echo "PASS bigdoc truncated" || { echo "FAIL bigdoc no marker"; FAIL=1; }
+syslen=$(grep "^STUB sys:" /tmp/stub_normal.log | tail -1 | wc -c | tr -d ' ')
+[ "$syslen" -lt 11000 ] && echo "PASS bigdoc capped ($syslen)" || { echo "FAIL bigdoc uncapped: $syslen"; FAIL=1; }
+rm -rf /tmp/idefix-bigdoc
 
 exit $FAIL

@@ -53,6 +53,8 @@ struct Config(Copyable):
     var doom_escalate: Bool
     var doom_nudge: Bool
     var args_repair: Bool
+    var compact_rich: Bool
+    var spill: Bool
     var tty: Bool
     var notify: String
     var state_root: String
@@ -88,6 +90,8 @@ struct Config(Copyable):
         self.doom_escalate = False
         self.doom_nudge = False
         self.args_repair = False
+        self.compact_rich = False
+        self.spill = False
         self.notify = ""
         self.state_root = ""
         self.session_dir = ""
@@ -101,7 +105,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-escalate --doom-nudge --args-repair --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-escalate --doom-nudge --args-repair --compact-rich --spill --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -223,6 +227,10 @@ def parse_args() raises -> Config:
                 cfg.retries = n
         elif arg == "--no-loop-guard":
             cfg.loop_guard = False
+        elif arg == "--compact-rich":
+            cfg.compact_rich = True
+        elif arg == "--spill":
+            cfg.spill = True
         elif arg == "--doom-escalate":
             cfg.doom_escalate = True
         elif arg == "--doom-nudge":
@@ -309,6 +317,8 @@ def parse_args() raises -> Config:
         cfg.doom_escalate = False
         cfg.doom_nudge = False
         cfg.args_repair = False
+        cfg.compact_rich = False
+        cfg.spill = False
     if cfg.sandbox:
         if not bindings.file_exists("/usr/bin/sandbox-exec"):
             die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
@@ -491,7 +501,7 @@ def build_body(cfg: Config, history: String, boost: Bool = False) -> String:
     )
 
 
-def compact_history(history: String, keep: Int) raises -> Tuple[String, Int]:
+def compact_history(history: String, keep: Int, rich: Bool) raises -> Tuple[String, Int]:
     # Rewrite contents of tool messages older than the last `keep` to a stub.
     # Messages are edited in place, never removed: tool_call pairing is a wire
     # invariant and dropping a tool result would 400 the next request.
@@ -521,17 +531,24 @@ def compact_history(history: String, keep: Int) raises -> Tuple[String, Int]:
         if content.find("[cleared") >= 0:
             continue
         var exit_code = String("null")
+        var cf = String("")
         var inner = bindings.cjson_parse(content)
         if inner:
             var ec = bindings.cjson_get(inner, "exit_code")
             if ec:
                 exit_code = String(Int(bindings.cjson_num(ec)))
+            if rich:
+                var cfo = bindings.cjson_get(inner, "changed_files")
+                if cfo:
+                    cf = bindings.cjson_str(cfo)
             bindings.cjson_del(inner)
         cleared += content.byte_length()
         var stub = (
             '{"exit_code":'
             + exit_code
-            + ',"output":"[cleared; re-run the command to inspect]","discarded_bytes":0}'
+            + ',"output":"[cleared; re-run the command to inspect]","discarded_bytes":0'
+            + (',"changed_files":' + bindings.json_quote(cf) if cf != "" else "")
+            + "}"
         )
         _ = bindings.cjson_replace_str(m, "content", stub)
     var out = bindings.cjson_print(arr)
@@ -731,7 +748,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             break
         if not cfg.bare and code == 400 and is_ctx_error(resp):
             # context overflow: clear old tool output and retry this request once
-            var (nh, cleared) = compact_history(history, cfg.compact_keep)
+            var (nh, cleared) = compact_history(history, cfg.compact_keep, cfg.compact_rich)
             if cleared > 0:
                 history = nh
                 bindings.eprint("[idefix] context overflow: compacted " + String(cleared) + " bytes")
@@ -1007,8 +1024,15 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     pdir = cfg.bindir
                                     if syspath != "":
                                         pdir = syspath + ":" + cfg.bindir
+                                var spill_path = String("")
+                                if cfg.spill and cfg.session_dir != "":
+                                    _ = bindings.mkdir_p(cfg.session_dir + "/spill")
+                                    spill_path = (
+                                        cfg.session_dir + "/spill/cmd-"
+                                        + String(st.commands) + ".out"
+                                    )
                                 var rc = bindings.run_capture(
-                                    cmd, cfg.repo, cfg.max_output_bytes, cmd_timeout, True, prof, pdir
+                                    cmd, cfg.repo, cfg.max_output_bytes, cmd_timeout, True, prof, pdir, spill_path
                                 )
                                 vlog(
                                     cfg,
@@ -1031,6 +1055,11 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     + String(rc[2])
                                 )
                                 st.last_out = rc[0]
+                                if spill_path != "" and rc[2] > 0:
+                                    result += (
+                                        ',"spilled_to":'
+                                        + bindings.json_quote(spill_path)
+                                    )
                                 if st.cmd_repeats >= 2:
                                     var count = st.cmd_repeats + 1
                                     result += (
@@ -1185,7 +1214,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             exit_code = 2
             break
         if cfg.compact_at > 0 and st.last_prompt_tokens > cfg.compact_at:
-            var (nh, cleared) = compact_history(history, cfg.compact_keep)
+            var (nh, cleared) = compact_history(history, cfg.compact_keep, cfg.compact_rich)
             if cleared > 0:
                 history = nh
                 bindings.eprint(
@@ -1388,9 +1417,15 @@ def main() raises:
     if not cfg.bare:
         system += SYSTEM_SUFFIX
         var doc_names = List[String]("AGENTS.md", "CLAUDE.md", __list_literal__=NoneType())
+        var doc_cap = 8192
         for nm in doc_names:
+            var left = doc_cap - repo_docs.byte_length()
+            if left <= 0:
+                break
             try:
                 var d = read_file(cfg.repo + "/" + nm)
+                if d.byte_length() > left:
+                    d = String(d[byte= : left]) + "\n[truncated]"
                 if String(d.strip()) != "":
                     repo_docs += "\n\n" + nm + ":\n" + d
             except:
@@ -1398,6 +1433,8 @@ def main() raises:
     if cfg.instructions != "":
         repo_docs += "\n\n" + cfg.instructions
     if repo_docs != "":
+        if repo_docs.byte_length() > 8192:
+            repo_docs = String(repo_docs[byte= : 8192]) + "\n[truncated]"
         system += "\n\nRepository instructions:" + repo_docs
 
     var initial_history = (

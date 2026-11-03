@@ -553,6 +553,7 @@ def run_capture(
     scrub_env: Bool,
     profile: String = "",
     path_dir: String = "",
+    spill_path: String = "",
 ) raises -> Tuple[String, Int, Int]:
     var args: List[String]
     if profile == "":
@@ -648,6 +649,16 @@ def run_capture(
     var child_done = False
     var start_ms = now_ms()
     var done_ms = 0
+    # tee everything read to spill_path when one was given; capped so the
+    # bound stays enforced. The file is unlinked below if nothing overflowed.
+    var spill_fp = FILE_ptr()
+    var spill = spill_path
+    if spill != "":
+        spill_fp = external_call["fopen", FILE_ptr](
+            spill.as_c_string_span().ptr(), "w".as_c_string_span().ptr()
+        )
+    var spill_written = 0
+    var spill_cap = 1048576
     while True:
         pfd32.unsafe_store(0, Int32(rfd))
         pfd16.unsafe_store(2, Int16(POLLIN))
@@ -662,6 +673,12 @@ def run_capture(
             )
             var start = 0
             if n > 0:
+                if spill_fp and spill_written < spill_cap:
+                    var take = min(Int(n), spill_cap - spill_written)
+                    _ = external_call["fwrite", c_size_t](
+                        buf.unsafe_ptr(), c_size_t(1), c_size_t(take), spill_fp
+                    )
+                    spill_written += take
                 if len(head) < head_cap:
                     var take = min(head_cap - len(head), Int(n))
                     for i in range(take):
@@ -721,5 +738,10 @@ def run_capture(
         code = 128 + sig
     if timed_out:
         code = 124
+    if spill_fp:
+        _ = external_call["fclose", c_int](spill_fp)
+        if discarded == 0:
+            var sp = spill
+            _ = external_call["unlink", c_int](sp.as_c_string_span().ptr())
     var out = String(unsafe_from_utf8=head^) + String(unsafe_from_utf8=tail^)
     return out^, code, discarded
