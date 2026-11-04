@@ -552,4 +552,7 @@ out=$(run_mode normal ./idefix --repo . --bare --events "task" 2>/dev/null); rc=
 check "bare events exit" 0 "$rc"
 check "bare events plain" "Done." "$out"
 
+# 45. ACP shim: scripted client over NDJSON drives a two-turn session
+python3 acp/test_acp.py 18924 && echo "PASS acp shim" || { echo "FAIL acp shim"; FAIL=1; }
+
 exit $FAIL

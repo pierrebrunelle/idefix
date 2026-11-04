@@ -78,6 +78,7 @@ Fixed: normalize accents before lowercasing in slugify().
 ```bash
 printf 'fix the parser\nadd tests for it\n' | idefix   # piped session
 idefix                                                # REPL (/reset, !cmd, /quit)
+idefix --events "task"                                # NDJSON events on stdout (embedding)
 idefix edit file.py <<'EOF'                           # structured edit
 <<<<<<< SEARCH
 old code
@@ -88,6 +89,10 @@ EOF
 ```
 
 ## What a command goes through
+
+**Editor UI, no UI code:** `acp/idefix-acp.py` is a ~200-line Python shim
+that makes idefix an [ACP](https://agentclientprotocol.com) agent — works
+in Zed and JetBrains agent panels. Setup: [`acp/README.md`](acp/README.md).
 
 `bash -c` in the repo: own process group, killpg on timeout, env scrubbed
 of `KEY`/`TOKEN`/`SECRET`/`PASSWORD`/`CREDENTIAL`. After each command the
