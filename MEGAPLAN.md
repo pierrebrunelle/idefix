@@ -125,14 +125,14 @@ headless profile mounts 93 bundles (`dsh-base` + `dsh-headless`).
 | **output spill to file** | Claude (goose/opencode pattern) | **added `--spill`** | **H-024 testing** |
 | tool-call pairing preserved under truncation | Claude | yes (compact_history keeps pairs) | load-bearing |
 | compaction (context backstop) | all three | yes | load-bearing; stub fidelity is the open question |
-| **rich compaction stubs (task/file state survives clearing)** | Devin | **added `--compact-rich`** | **H-023 testing** |
+| **rich compaction stubs (task/file state survives clearing)** | Devin | ~~added `--compact-rich`~~ removed | **H-023 falsified 8/1 — code removed** |
 | repo instructions file | Codex, Claude | yes, **now 8KB-capped** (was unbounded: bounds hole) | load-bearing + fixed |
 | finite transport retries | Codex | yes | load-bearing |
-| max-turns / loop guard | Claude | yes (+ doom-nudge, doom-escalate) | H-019/H-022 testing |
+| max-turns / loop guard | Claude | yes | guard stays; doom-escalate/nudge falsified, code removed |
 | exact-match edit + miss hint | Devin #1, Claude runner-up | yes `idefix edit` | load-bearing |
 | OS sandbox | Codex runner-up | yes `--sandbox` (seatbelt) | safety bound, not a pass-rate lever |
 | journal / undo | Devin | yes | ours |
-| malformed-arg repair | named placebo by all three | `--args-repair` arm exists | **falsified by corpus: arg_failed=0.00** — pending kill |
+| malformed-arg repair | named placebo by all three | ~~`--args-repair`~~ removed | **killed: arg_failed=0.00/989 rows — code removed** |
 | fuzzy/lenient edit matching | Claude: comp | no | rejected; aider's version is literally dead code |
 | subagents | Devin: placebo suspect | no | do not port |
 | long-term memory | Codex: placebo suspect (~9.2k LOC) | no | do not port |
@@ -150,10 +150,10 @@ empty-response retries, per-model prompts). Everything else is
 infrastructure: finite context, pipe backpressure, hung processes,
 network failure, repo-specific knowledge, execution authority.
 
-Corpus check: `arg_failed` = 0.00 across scored rows — the repair path is
-armed and has never fired. `--args-repair` (H-020) is testing a mechanism
-for a failure mode our models don't produce. If it stays at zero, the
-card dies on evidence, exactly as designed.
+Corpus check: `arg_failed` = 0.00 across 989 scored rows — the repair
+path was armed and never fired. `--args-repair` (H-020) tested a
+mechanism for a failure mode our models don't produce; card killed,
+code removed. The system worked: a real feature died on evidence.
 
 ## 4. The 90% deletion
 
@@ -169,7 +169,8 @@ the remaining work is fidelity of the few mechanisms inside it
 
 Closed by this round:
 - AGENTS.md/CLAUDE.md injection had no size bound → 8KB cap + marker.
-- Cleared stubs dropped `changed_files` → `--compact-rich` (H-023).
+- Cleared stubs dropped `changed_files` → `--compact-rich` (H-023);
+  falsified 8/1, mechanism removed — the stubs stay plain.
 - Cap-hit output was unrecoverable → `--spill` (H-024).
 
 Open, deliberately unported:
@@ -185,7 +186,7 @@ Open, deliberately unported:
 
 | card | flag | arm | mediator (gate) | direction | evidence filter |
 |---|---|---|---|---|---|
-| H-023 | `--compact-rich` | idefix-compactrich | `repeat_outcome_cmds` | lt | `mediators.compact_fired==true` cells only |
+| H-023 | `--compact-rich` | idefix-compactrich | `repeat_outcome_cmds` | lt | `mediators.compact_fired==true` cells only — **falsified 8/1, removed** |
 | H-024 | `--spill` | idefix-spill | `pass` | gt | `mediators.output_discarded==true` cells only |
 
 New mediators in `score.py`: `compact_fired` (journal `ev=compact`, or

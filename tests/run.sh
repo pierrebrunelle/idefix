@@ -88,15 +88,7 @@ check "bigusage answer" "Done." "$out"
 grep -q "cleared; re-run" /tmp/stub_bigusage.log && echo "PASS bigusage cleared" || { echo "FAIL bigusage cleared"; cat /tmp/stub_bigusage.log; FAIL=1; }
 grep -q '"ev":"compact"' /tmp/idefix-state-compact/sessions/*/journal.jsonl && echo "PASS bigusage journal" || { echo "FAIL bigusage journal"; FAIL=1; }
 
-# 11b. bigwrite + --compact-rich: cleared stubs keep changed_files
-rm -rf /tmp/idefix-state-crich; rm -f bigwrite_file.txt
-out=$(run_mode bigwrite ./idefix --repo . --compact-keep 0 --compact-rich --state-dir /tmp/idefix-state-crich "task" 2>/dev/null); rc=$?
-check "compactrich exit" 0 "$rc"
-grep -q "cleared; re-run" /tmp/stub_bigwrite.log && echo "PASS compactrich cleared" || { echo "FAIL compactrich cleared"; cat /tmp/stub_bigwrite.log; FAIL=1; }
-grep -q 'cleared; re-run.*changed_files.*bigwrite_file' /tmp/stub_bigwrite.log && echo "PASS compactrich keeps cf" || { echo "FAIL compactrich cf"; cat /tmp/stub_bigwrite.log; FAIL=1; }
-rm -f bigwrite_file.txt
-
-# 11c. same run without the flag: cleared stub drops changed_files
+# 11c. cleared stub drops changed_files
 # (the pre-compaction request still carries the field - only match it
 # adjacent to the cleared marker so the original result can't false-hit)
 rm -rf /tmp/idefix-state-nocrich; rm -f bigwrite_file.txt
@@ -126,23 +118,6 @@ out=$(run_mode loop ./idefix --repo . --max-requests 6 "task" 2>/dev/null); rc=$
 check "loop exit" 2 "$rc"
 grep -q "loop_warning" /tmp/stub_loop.log && echo "PASS loop warning" || { echo "FAIL loop warning"; cat /tmp/stub_loop.log; FAIL=1; }
 grep -q '"stop":true' "$IDEFIX_STATE_DIR"/sessions/*/journal.jsonl 2>/dev/null && echo "PASS loop doom stop" || { echo "FAIL loop doom stop"; FAIL=1; }
-
-# 13esc. --doom-escalate: guard fire warns and arms one boosted-temperature
-# request; the repeat after that still stops with exit 2
-find "$IDEFIX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
-out=$(run_mode loop ./idefix --repo . --max-requests 8 --doom-escalate "task" 2>/dev/null); rc=$?
-check "doomesc exit" 2 "$rc"
-grep -q "do not re-issue" /tmp/stub_loop.log && echo "PASS doomesc warn" || { echo "FAIL doomesc warn"; cat /tmp/stub_loop.log; FAIL=1; }
-grep -q "STUB temp: 0.6" /tmp/stub_loop.log && echo "PASS doomesc boost" || { echo "FAIL doomesc boost"; cat /tmp/stub_loop.log; FAIL=1; }
-find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"escalate":true' {} \; 2>/dev/null | grep -q . && echo "PASS doomesc journal" || { echo "FAIL doomesc journal"; FAIL=1; }
-
-# 13nudge. --doom-nudge: guard fire pushes a user message quoting the repeated
-# command and its output; the repeat after that still stops with exit 2
-find "$IDEFIX_STATE_DIR" -name journal.jsonl -delete 2>/dev/null
-out=$(run_mode loop ./idefix --repo . --max-requests 8 --doom-nudge "task" 2>/dev/null); rc=$?
-check "doomnudge exit" 2 "$rc"
-grep -q "Do not run it again" /tmp/stub_loop.log && echo "PASS doomnudge msg" || { echo "FAIL doomnudge msg"; grep -c "user" /tmp/stub_loop.log; FAIL=1; }
-find "$IDEFIX_STATE_DIR" -name journal.jsonl -exec grep -l '"nudge":true' {} \; 2>/dev/null | grep -q . && echo "PASS doomnudge journal" || { echo "FAIL doomnudge journal"; FAIL=1; }
 
 # 13reason. thinking-mode servers answer in `reasoning` with empty content;
 # a stray orphan </think> should be stripped too
@@ -175,17 +150,10 @@ check "medit exit" 0 "$rc"
 grep -q "block(s) applied" /tmp/stub_medit.log && grep -q "x = 9" /tmp/stub_medit.log && echo "PASS medit apply" || { echo "FAIL medit apply"; cat /tmp/stub_medit.log; FAIL=1; }
 rm -f e.py
 
-# 13d3. args-repair: raw and JSON-string argument shapes error by default,
-# run under --args-repair
+# 13d3. raw argument shapes error by default (no repair flag exists)
 out=$(run_mode bareargs ./idefix --repo . "task" 2>/dev/null); rc=$?
 check "bareargs-off exit" 0 "$rc"
 grep -q "not valid JSON" /tmp/stub_bareargs.log && echo "PASS bareargs strict default" || { echo "FAIL bareargs strict default"; cat /tmp/stub_bareargs.log; FAIL=1; }
-out=$(run_mode bareargs ./idefix --repo . --args-repair "task" 2>/dev/null); rc=$?
-check "bareargs exit" 0 "$rc"
-grep -q "repair-ok" /tmp/stub_bareargs.log && echo "PASS bareargs repair" || { echo "FAIL bareargs repair"; cat /tmp/stub_bareargs.log; FAIL=1; }
-out=$(run_mode strargs ./idefix --repo . --args-repair "task" 2>/dev/null); rc=$?
-check "strargs exit" 0 "$rc"
-grep -q "stringarg-ok" /tmp/stub_strargs.log && echo "PASS strargs repair" || { echo "FAIL strargs repair"; cat /tmp/stub_strargs.log; FAIL=1; }
 
 # 13e. ediff: changed file -> compact unified diff in tool result (non-bare)
 out=$(run_mode ediff ./idefix --repo . "task" 2>/dev/null); rc=$?
@@ -460,9 +428,6 @@ check "bare ctxerr exit" 3 "$rc"
 grep -q "cleared; re-run" /tmp/stub_ctxerr.log && { echo "FAIL bare compacted"; FAIL=1; } || echo "PASS bare no compact"
 
 # 32b. --bare also holds the experimental flags off
-out=$(run_mode bigwrite ./idefix --repo . --bare --compact-rich "task" 2>/dev/null); rc=$?
-grep -q "cleared; re-run" /tmp/stub_bigwrite.log && { echo "FAIL bare+rich compacted"; FAIL=1; } || echo "PASS bare rich off"
-rm -f bigwrite_file.txt
 rm -rf /tmp/idefix-state-barespill
 out=$(run_mode flood ./idefix --repo . --bare --max-output-bytes 1000 --spill --state-dir /tmp/idefix-state-barespill "task" 2>/dev/null); rc=$?
 grep -q '"spilled_to":"' /tmp/stub_flood.log && { echo "FAIL bare spilled"; FAIL=1; } || echo "PASS bare spill off"
@@ -516,10 +481,10 @@ rm -f resync.txt /tmp/idefix_resync_err.txt
 out=$(run_mode err500 ./idefix --repo . --max-requests 1 "task" 2>/dev/null); rc=$?
 check "err500 budget exit" 2 "$rc"
 
-# 40. --bare forces --args-repair off: string arguments error like plain --bare
-out=$(run_mode argstr ./idefix --repo . --bare --args-repair "task" 2>/dev/null); rc=$?
-check "bare argstr exit" 0 "$rc"
-grep -q "missing or empty command" /tmp/stub_argstr.log && echo "PASS bare argstr repair off" || { echo "FAIL bare argstr repair ran"; cat /tmp/stub_argstr.log; FAIL=1; }
+# 40. argstr: arguments as a bare JSON string errors (no repair path exists)
+out=$(run_mode argstr ./idefix --repo . "task" 2>/dev/null); rc=$?
+check "argstr exit" 0 "$rc"
+grep -q "missing or empty command" /tmp/stub_argstr.log && echo "PASS argstr errors" || { echo "FAIL argstr"; cat /tmp/stub_argstr.log; FAIL=1; }
 
 # 41. zero bounds die at parse: --max-requests 0 -> usage error, no request
 out=$(./idefix --repo . --max-requests 0 "task" 2>&1); rc=$?

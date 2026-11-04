@@ -50,10 +50,6 @@ struct Config(Copyable):
     var compact_keep: Int
     var retries: Int
     var loop_guard: Bool
-    var doom_escalate: Bool
-    var doom_nudge: Bool
-    var args_repair: Bool
-    var compact_rich: Bool
     var events: Bool
     var spill: Bool
     var tty: Bool
@@ -88,10 +84,6 @@ struct Config(Copyable):
         self.compact_keep = 6
         self.retries = 3
         self.loop_guard = True
-        self.doom_escalate = False
-        self.doom_nudge = False
-        self.args_repair = False
-        self.compact_rich = False
         self.events = False
         self.spill = False
         self.notify = ""
@@ -107,7 +99,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-escalate --doom-nudge --args-repair --compact-rich --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -229,18 +221,10 @@ def parse_args() raises -> Config:
                 cfg.retries = n
         elif arg == "--no-loop-guard":
             cfg.loop_guard = False
-        elif arg == "--compact-rich":
-            cfg.compact_rich = True
         elif arg == "--spill":
             cfg.spill = True
         elif arg == "--events":
             cfg.events = True
-        elif arg == "--doom-escalate":
-            cfg.doom_escalate = True
-        elif arg == "--doom-nudge":
-            cfg.doom_nudge = True
-        elif arg == "--args-repair":
-            cfg.args_repair = True
         elif arg == "--continue":
             cfg.cont = True
         elif arg == "--bare":
@@ -318,10 +302,6 @@ def parse_args() raises -> Config:
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
-        cfg.doom_escalate = False
-        cfg.doom_nudge = False
-        cfg.args_repair = False
-        cfg.compact_rich = False
         cfg.spill = False
         cfg.events = False
     if cfg.sandbox:
@@ -491,15 +471,12 @@ def write_status(cfg: Config, st: TurnStats, extra: String):
     _ = bindings.write_file(cfg.session_dir + "/status", s + "\n")
 
 
-def build_body(cfg: Config, history: String, boost: Bool = False) -> String:
-    var t = cfg.temperature
-    if boost:
-        t = 0.6
+def build_body(cfg: Config, history: String) -> String:
     return (
         '{"model":'
         + bindings.json_quote(cfg.model)
         + ',"stream":false'
-        + ',"temperature":' + String(t)
+        + ',"temperature":' + String(cfg.temperature)
         + ',"tools":['
         + TOOLS
         + '],"messages":['
@@ -508,7 +485,7 @@ def build_body(cfg: Config, history: String, boost: Bool = False) -> String:
     )
 
 
-def compact_history(history: String, keep: Int, rich: Bool) raises -> Tuple[String, Int]:
+def compact_history(history: String, keep: Int) raises -> Tuple[String, Int]:
     # Rewrite contents of tool messages older than the last `keep` to a stub.
     # Messages are edited in place, never removed: tool_call pairing is a wire
     # invariant and dropping a tool result would 400 the next request.
@@ -538,24 +515,17 @@ def compact_history(history: String, keep: Int, rich: Bool) raises -> Tuple[Stri
         if content.find("[cleared") >= 0:
             continue
         var exit_code = String("null")
-        var cf = String("")
         var inner = bindings.cjson_parse(content)
         if inner:
             var ec = bindings.cjson_get(inner, "exit_code")
             if ec:
                 exit_code = String(Int(bindings.cjson_num(ec)))
-            if rich:
-                var cfo = bindings.cjson_get(inner, "changed_files")
-                if cfo:
-                    cf = bindings.cjson_str(cfo)
             bindings.cjson_del(inner)
         cleared += content.byte_length()
         var stub = (
             '{"exit_code":'
             + exit_code
-            + ',"output":"[cleared; re-run the command to inspect]","discarded_bytes":0'
-            + (',"changed_files":' + bindings.json_quote(cf) if cf != "" else "")
-            + "}"
+            + ',"output":"[cleared; re-run the command to inspect]","discarded_bytes":0}'
         )
         _ = bindings.cjson_replace_str(m, "content", stub)
     var out = bindings.cjson_print(arr)
@@ -661,8 +631,6 @@ struct TurnStats(Copyable):
     var start_s: Int
     var last_cmd: String
     var cmd_repeats: Int
-    var escalate_next: Bool
-    var last_out: String
 
     def __init__(out self):
         self.requests = 0
@@ -673,8 +641,6 @@ struct TurnStats(Copyable):
         self.start_s = 0
         self.last_cmd = ""
         self.cmd_repeats = 0
-        self.escalate_next = False
-        self.last_out = ""
 
 
 def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tuple[String, Int]:
@@ -683,13 +649,10 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var deadline = bindings.now_seconds() + cfg.max_seconds
     var exit_code = 0
     var final = ""
-    var doom_armed = False
     # per-turn state: the REPL shares st across turns
     st.requests = 0
-    st.escalate_next = False
     st.cmd_repeats = 0
     st.last_cmd = ""
-    st.last_out = ""
     while st.requests < cfg.max_requests:
         if bindings.now_seconds() > deadline:
             bindings.eprint("[idefix] --max-seconds exceeded")
@@ -698,7 +661,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
         var req_ms = (deadline - bindings.now_seconds()) * 1000
         var req_s = bindings.now_seconds()
         var r = bindings.http_post(
-            cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
+            cfg.base_url + "/chat/completions", build_body(cfg, history),
             cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
         )
         st.requests += 1
@@ -706,10 +669,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             req_status(cfg, st.requests, req_s)
         var code = r[0]
         var resp = r[1]
-        if code != 0:
-            # a transport failure never reached the server; keep the
-            # armed boost for the retry instead of spending it silently
-            st.escalate_next = False
         vlog(cfg, "request " + String(st.requests) + " -> http " + String(code))
         var attempt = 0
         # code 0 is a transport error; 5xx is retryable
@@ -736,7 +695,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             req_ms = (deadline - bindings.now_seconds()) * 1000
             req_s = bindings.now_seconds()
             r = bindings.http_post(
-                cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
+                cfg.base_url + "/chat/completions", build_body(cfg, history),
                 cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
             )
             st.requests += 1
@@ -744,8 +703,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 req_status(cfg, st.requests, req_s)
             code = r[0]
             resp = r[1]
-            if code != 0:
-                st.escalate_next = False
         if code == 0 and (
             bindings.now_seconds() > deadline or resp.find("CURL_ERROR:28") >= 0
         ):
@@ -755,7 +712,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             break
         if not cfg.bare and code == 400 and is_ctx_error(resp):
             # context overflow: clear old tool output and retry this request once
-            var (nh, cleared) = compact_history(history, cfg.compact_keep, cfg.compact_rich)
+            var (nh, cleared) = compact_history(history, cfg.compact_keep)
             if cleared > 0:
                 history = nh
                 bindings.eprint("[idefix] context overflow: compacted " + String(cleared) + " bytes")
@@ -767,14 +724,12 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 if st.requests < cfg.max_requests:
                     req_ms = (deadline - bindings.now_seconds()) * 1000
                     r = bindings.http_post(
-                        cfg.base_url + "/chat/completions", build_body(cfg, history, st.escalate_next),
+                        cfg.base_url + "/chat/completions", build_body(cfg, history),
                         cfg.bearer, max(req_ms, 1), cfg.max_http_bytes
                     )
                     st.requests += 1
                     code = r[0]
                     resp = r[1]
-                    if code != 0:
-                        st.escalate_next = False
         if code != 200:
             bindings.eprint("[idefix] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
             if st.requests >= cfg.max_requests and not transport_fatal(code, resp):
@@ -855,7 +810,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             if n > cfg.max_calls_per_response:
                 n = cfg.max_calls_per_response
             var doom = False
-            var nudge = String("")
             for j in range(n):
                 var call = bindings.cjson_arr(calls, j)
                 var cid = bindings.cjson_str(bindings.cjson_get(call, "id"))
@@ -867,15 +821,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     # some servers emit arguments as an object, not a
                     # stringified blob - re-serialize like the markup path
                     argsj = bindings.cjson_print(arg_item)
-                if cfg.args_repair:
-                    var raw = String(argsj.strip())
-                    if (
-                        raw != "" and raw.find("{") != 0
-                        and raw.find("[") != 0 and raw.find('"') != 0
-                    ):
-                        # bare command text where JSON was expected; wrap
-                        # so the repair path below lifts it as a string
-                        argsj = bindings.json_quote(raw)
                 var result = String("")
                 if name != "bash":
                     result = (
@@ -888,16 +833,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                         result = '{"error":"arguments are not valid JSON"}'
                     else:
                         var cmd = bindings.cjson_str(bindings.cjson_get(aj, "command"))
-                        if cmd == "" and cfg.args_repair:
-                            # models sometimes send the command as a bare
-                            # JSON string or under a near-miss key
-                            cmd = bindings.cjson_str(aj)
-                            if cmd == "":
-                                cmd = bindings.cjson_str(bindings.cjson_get(aj, "cmd"))
-                            if cmd == "":
-                                cmd = bindings.cjson_str(bindings.cjson_get(aj, "input"))
-                            if cmd == "":
-                                cmd = bindings.cjson_str(bindings.cjson_get(aj, "code"))
                         if bindings.now_seconds() > deadline:
                             result = '{"error":"time budget expired; not executed"}'
                         elif cmd == "":
@@ -923,55 +858,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                             var prof = String("")
                             var clone_ok = False
                             var tree = String("")
-                            if doom_now and cfg.doom_escalate and not doom_armed:
-                                # warn once + one boosted-temperature request to
-                                # escape the deterministic repeat; a further
-                                # repeat still stops the run
-                                doom_armed = True
-                                st.escalate_next = True
-                                result = (
-                                    '{"error":"same command repeated 5 times;'
-                                    + ' do not re-issue it - run a different check'
-                                    + ' or reply with your final answer.'
-                                    + ' Repeating it stops the run."}'
-                                )
-                                journal(
-                                    cfg,
-                                    '{"ev":"loop","ts":'
-                                    + String(bindings.now_seconds())
-                                    + ',"cmd":' + bindings.json_quote(cmd)
-                                    + ',"warn":true,"escalate":true}',
-                                )
-                            elif doom_now and cfg.doom_nudge and not doom_armed:
-                                # warn once + a user-role message quoting the
-                                # repeated command and its output: at temp 0
-                                # only new context yields a different reply;
-                                # a further repeat still stops the run
-                                doom_armed = True
-                                nudge = (
-                                    "This exact command has already run "
-                                    + String(st.cmd_repeats + 1)
-                                    + " times with identical output:\n" + cmd
-                                    + "\nIts output was:\n"
-                                    + st.last_out[byte= : min(st.last_out.byte_length(), 500)]
-                                    + "\nDo not run it again. Inspect the file"
-                                    + " you are editing, act on what the output"
-                                    + " shows, or give your final answer."
-                                )
-                                result = (
-                                    '{"error":"same command repeated 5 times;'
-                                    + ' do not re-issue it - run a different check'
-                                    + ' or reply with your final answer.'
-                                    + ' Repeating it stops the run."}'
-                                )
-                                journal(
-                                    cfg,
-                                    '{"ev":"loop","ts":'
-                                    + String(bindings.now_seconds())
-                                    + ',"cmd":' + bindings.json_quote(cmd)
-                                    + ',"warn":true,"nudge":true}',
-                                )
-                            elif doom_now:
+                            if doom_now:
                                 result = (
                                     '{"error":"same command repeated 5 times;'
                                     + ' stopped by loop guard"}'
@@ -1061,7 +948,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                     + ',"discarded_bytes":'
                                     + String(rc[2])
                                 )
-                                st.last_out = rc[0]
                                 if spill_path != "" and rc[2] > 0:
                                     result += (
                                         ',"spilled_to":'
@@ -1159,11 +1045,6 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     cfg, history,
                     tool_msg(cid, '{"error":"call limit reached; not executed"}')
                 )
-            if nudge != "":
-                push_msg(
-                    cfg, history,
-                    '{"role":"user","content":' + bindings.json_quote(nudge) + "}",
-                )
             if doom:
                 bindings.eprint("[idefix] loop guard stopped a repeated command")
                 exit_code = 2
@@ -1221,7 +1102,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
             exit_code = 2
             break
         if cfg.compact_at > 0 and st.last_prompt_tokens > cfg.compact_at:
-            var (nh, cleared) = compact_history(history, cfg.compact_keep, cfg.compact_rich)
+            var (nh, cleared) = compact_history(history, cfg.compact_keep)
             if cleared > 0:
                 history = nh
                 bindings.eprint(

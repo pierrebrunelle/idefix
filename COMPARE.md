@@ -25,7 +25,7 @@ tool_calls confirmed); bundle-level dissection in MEGAPLAN §1.
 | bounded observation (cap head+tail) | keep | keep | keep | keep | — | `dsh-fs-observation-policy` | `--max-output-bytes` 64KB | have |
 | output spill to file | keep | (cap only) | keep | keep | — | **`dsh-spill-local`+policy** | `--spill` flag, `70236bd` | arm H-024 |
 | compaction backstop | keep #1* | keep | keep | keep | — | `dsh-compaction-basic` (+2 alternates) | `--compact-at` + stubs | have |
-| rich compaction (state survives clearing) | keep #1 | — | — | — | — | `<compacted-summary>` marker | `--compact-rich` flag | arm H-023 |
+| rich compaction (state survives clearing) | keep #1 | — | — | — | — | `<compacted-summary>` marker | ~~`--compact-rich`~~ removed | H-023 falsified 8/1 |
 | repo instructions file | — | keep | keep | — | — | `dsh-agent-instructions` | AGENTS/CLAUDE 8KB cap | have |
 | finite transport retries | keep | keep | — | — | — | `dsh-llm-retry` | `--retries` | have |
 | turn/loop bound | — | — | keep | — | — | **`dsh-repeat-tool-reminder`** | `--max-requests` + loop-guard | have+ |
@@ -64,7 +64,7 @@ H-023 flag implements.
 | mechanism | why it's ours | measured? |
 |---|---|---|
 | one model-facing tool (`bash`) | forces everything through one auditable pipe | design axiom |
-| loop-guard + doom-escalate/nudge | nobody else detects deterministic repeat-death (opencode: "doom-loop detection: none") | H-019/H-022 testing; loop-guard = our #1 failure class |
+| loop-guard | nobody else detects deterministic repeat-death (opencode: "doom-loop detection: none") | our #1 failure class; escalate/nudge variants falsified + removed |
 | env credential scrub | model subprocess never sees KEY/TOKEN/SECRET | mutation-tested |
 | `--bare` protocol oracle | byte-identical wire vs ref client — nobody else has a parity lock | check_parity PASS |
 | result can't lie (`changed_files`, `discarded_bytes`, `spilled_to`) | exit 0 with no write ≠ success | mediator-backed |

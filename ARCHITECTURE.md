@@ -66,6 +66,12 @@ REPL mode = the same loop per input line, context shared. `/reset` clears
 history, `!cmd` runs a shell command locally (0 tokens), `/quit`/`/exit`
 leaves. A task timeout is a bound like any other — exit 2.
 
+`--events` tees every journal event line to stdout (NDJSON) instead of
+printing the final answer — the embedding surface. `acp/idefix-acp.py`
+consumes it: one ACP session = one idefix state dir, one prompt turn =
+one `idefix --events [--continue]` process, so cancel = kill and context
+= journal replay. Zed/JetBrains speak ACP to the shim, never to the binary.
+
 ## Tool-call dataflow
 
 ```text
@@ -85,6 +91,8 @@ exec       --------  fork /bin/bash -c "cmd", own process group
    |
    v
 result     --------  stdout+stderr (capped), exit code, truncated-byte counts
+             --spill: oversized output also teed to a bounded file in the
+             state dir; the result carries spilled_to when bytes were cut
    |
    v
 diff       --------  md5 diff -> changed_files[] + compact unified diff

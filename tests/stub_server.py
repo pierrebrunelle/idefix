@@ -289,16 +289,6 @@ class Handler(BaseHTTPRequestHandler):
                     }],
                     finish="tool_calls",
                 )
-            elif MODE == "strargs":
-                # arguments is a JSON string holding the command
-                resp = msg_response(
-                    calls=[{
-                        "id": "call_s", "type": "function",
-                        "function": {"name": "bash",
-                                     "arguments": '"echo stringarg-ok"'},
-                    }],
-                    finish="tool_calls",
-                )
             elif MODE == "argstr":
                 # arguments is a bare JSON string, not an object
                 resp = msg_response(
