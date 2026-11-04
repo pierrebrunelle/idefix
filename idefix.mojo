@@ -54,6 +54,7 @@ struct Config(Copyable):
     var doom_nudge: Bool
     var args_repair: Bool
     var compact_rich: Bool
+    var events: Bool
     var spill: Bool
     var tty: Bool
     var notify: String
@@ -91,6 +92,7 @@ struct Config(Copyable):
         self.doom_nudge = False
         self.args_repair = False
         self.compact_rich = False
+        self.events = False
         self.spill = False
         self.notify = ""
         self.state_root = ""
@@ -105,7 +107,7 @@ struct Config(Copyable):
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-escalate --doom-nudge --args-repair --compact-rich --spill --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --doom-escalate --doom-nudge --args-repair --compact-rich --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -231,6 +233,8 @@ def parse_args() raises -> Config:
             cfg.compact_rich = True
         elif arg == "--spill":
             cfg.spill = True
+        elif arg == "--events":
+            cfg.events = True
         elif arg == "--doom-escalate":
             cfg.doom_escalate = True
         elif arg == "--doom-nudge":
@@ -319,6 +323,7 @@ def parse_args() raises -> Config:
         cfg.args_repair = False
         cfg.compact_rich = False
         cfg.spill = False
+        cfg.events = False
     if cfg.sandbox:
         if not bindings.file_exists("/usr/bin/sandbox-exec"):
             die("--sandbox requires macOS sandbox-exec; Linux parity is bwrap, not yet wired", 64)
@@ -371,6 +376,8 @@ def write_transcript(path: String, history: String):
 
 
 def journal(cfg: Config, ev: String):
+    if cfg.events:
+        print(ev)
     if cfg.journal_path == "":
         return
     _ = bindings.append_file(cfg.journal_path, ev + "\n")
@@ -1259,7 +1266,7 @@ def finish(cfg: Config, history: String, st: TurnStats, final: String, code: Int
         + " elapsed=" + String(bindings.now_seconds() - st.start_s) + "s"
         + " exit=" + String(code)
     )
-    if final != "":
+    if final != "" and not cfg.events:
         print(final)
     external_call["exit", c_int](c_int(code))
 
@@ -1545,7 +1552,7 @@ def main() raises:
         elif final != "" and code == 0:
             var amsg2 = '{"role":"assistant","content":' + bindings.json_quote(final) + '}'
             push_msg(cfg, history, amsg2)
-        if final != "":
+        if final != "" and not cfg.events:
             print(final)
         if code != 0:
             bindings.eprint("[idefix] turn ended with exit " + String(code))

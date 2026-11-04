@@ -535,4 +535,21 @@ syslen=$(grep "^STUB sys:" /tmp/stub_normal.log | tail -1 | wc -c | tr -d ' ')
 [ "$syslen" -lt 11000 ] && echo "PASS bigdoc capped ($syslen)" || { echo "FAIL bigdoc uncapped: $syslen"; FAIL=1; }
 rm -rf /tmp/idefix-bigdoc
 
+# 43. --events: stdout is JSONL only, final answer arrives as an ev:msg
+out=$(run_mode normal ./idefix --repo . --events "task" 2>/dev/null); rc=$?
+check "events exit" 0 "$rc"
+echo "$out" | python3 -c "
+import json,sys
+lines=[l for l in sys.stdin if l.strip()]
+assert lines, 'no output'
+for l in lines: assert 'ev' in json.loads(l), l
+msgs=[json.loads(l) for l in lines if json.loads(l).get('ev')=='msg']
+assert any('Done.' in (m['m'].get('content') or '') for m in msgs), msgs
+" && echo "PASS events jsonl" || { echo "FAIL events jsonl"; echo "$out" | head -5; FAIL=1; }
+
+# 44. --bare forces --events off: stdout stays plain text
+out=$(run_mode normal ./idefix --repo . --bare --events "task" 2>/dev/null); rc=$?
+check "bare events exit" 0 "$rc"
+check "bare events plain" "Done." "$out"
+
 exit $FAIL
