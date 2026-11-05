@@ -10,6 +10,7 @@ Modes: normal | badargs | malformed | batch | sleep | sednoop | sbx | length | m
 """
 import json
 import os
+import re
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -33,6 +34,24 @@ def tool_call(call_id, command):
         "type": "function",
         "function": {"name": "bash", "arguments": json.dumps({"command": command})},
     }
+
+
+def _mode_spec(mode):
+    """Card-added stub modes: tests/modes/<mode>.json
+    {"turns": [{content?, calls? [{id, command}], finish?, usage?}]};
+    the turn served is min(n_tool, len(turns)-1) so a card can script a
+    call sequence and a final answer without touching this file."""
+    if not re.fullmatch(r"[a-z0-9_-]+", mode):
+        return None
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "modes", mode + ".json")
+    try:
+        with open(path) as f:
+            spec = json.load(f)
+    except (OSError, ValueError):
+        return None
+    turns = spec.get("turns") if isinstance(spec, dict) else None
+    return spec if isinstance(turns, list) and turns else None
 
 
 def msg_response(content=None, calls=None, finish="stop", usage=None, reasoning=None):
@@ -319,10 +338,21 @@ class Handler(BaseHTTPRequestHandler):
                     finish="tool_calls",
                 )
             else:
-                resp = msg_response(
-                    calls=[tool_call("call_1", "echo spike-ok && exit 3")],
-                    finish="tool_calls",
-                )
+                spec = _mode_spec(MODE)
+                if spec is not None:
+                    turn = spec["turns"][min(n_tool, len(spec["turns"]) - 1)]
+                    resp = msg_response(
+                        content=turn.get("content"),
+                        calls=[tool_call(c["id"], c["command"])
+                               for c in turn.get("calls", ())] or None,
+                        finish=turn.get("finish", "stop"),
+                        usage=turn.get("usage"),
+                    )
+                else:
+                    resp = msg_response(
+                        calls=[tool_call("call_1", "echo spike-ok && exit 3")],
+                        finish="tool_calls",
+                    )
         else:
             asst = [m for m in msgs if m.get("tool_calls")][-1]
             ids = {c["id"] for c in asst["tool_calls"]}

@@ -520,4 +520,11 @@ check "bare events plain" "Done." "$out"
 # 45. ACP shim: scripted client over NDJSON drives a two-turn session
 python3 acp/test_acp.py 18924 && echo "PASS acp shim" || { echo "FAIL acp shim"; FAIL=1; }
 
+# card-added cases: tests/cases/*.sh are sourced in this shell and may
+# use check/run_mode/FAIL plus stub modes from tests/modes/<mode>.json
+for case in tests/cases/*.sh; do
+    [ -e "$case" ] || continue
+    . "$case"
+done
+
 exit $FAIL
