@@ -10,6 +10,8 @@ llama.cpp, `max serve`, vLLM.
 Capability = model × harness. The harness half should be small enough to
 hold in your head.
 
+<img width="1024" alt="idefix architecture at a glance — setup, safety bounds, the request/tool loop, and editor/event integrations" src=".github/architecture.jpg" />
+
 ## Get it running
 
 ```bash
