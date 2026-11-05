@@ -31,11 +31,17 @@ idefix "the slugify test fails on unicode input - fix it"
 Fixed: normalize accents before lowercasing in slugify().
 ```
 
-No task = REPL (`/reset`, `!cmd`, `/quit`); piped lines run as one shared
-session. `idefix edit FILE` applies SEARCH/REPLACE blocks. Other server:
-`IDEFIX_BASE_URL` + `IDEFIX_MODEL`. Careful with `Qwen3-4B-Instruct`
-builds: some templates emit tool calls as plain text and nothing runs —
-a protocol failure, not a model failure.
+```text
+idefix "task"        one shot, exits when done
+idefix               REPL: /reset  !cmd  /quit
+cat todo | idefix    piped lines share one session
+idefix --continue    resume this repo's journal
+idefix edit FILE     apply SEARCH/REPLACE blocks
+```
+
+Other server: `IDEFIX_BASE_URL` + `IDEFIX_MODEL`. Careful with
+`Qwen3-4B-Instruct` builds: some templates emit tool calls as plain text
+and nothing runs — a protocol failure, not a model failure.
 
 ## What makes it different
 
@@ -59,14 +65,30 @@ a protocol failure, not a model failure.
 
 ## How it works
 
-One loop: POST `messages[]` to `/chat/completions` with a single
-`bash(command)` tool schema. Each tool call runs `bash -c` in the repo
-inside its own process group — credentials scrubbed from env, timeout =
-killpg, output capped head+tail (`--spill` tees overflow to a file) —
-and the result carries `exit_code`, `changed_files`, and a compact diff
-back into history. Loops until the model answers or a bound trips:
-requests, wall clock, prompt tokens, identical-command guard. Every run
-appends `journal.jsonl`; `--continue` rebuilds context from it.
+```text
+            "fix the bug"
+                 |
+                 v
+   +--->  POST /chat/completions
+   |      {messages[], tools: [bash(command)]}
+   |             |
+   |             v
+   |        tool_calls? -- no --> print answer -> exit 0
+   |             | yes
+   |             v
+   |      bash -c cmd    in the repo, own process group
+   |      creds scrubbed | timeout = killpg
+   |      output capped head+tail  |  --spill -> file
+   |             |
+   |             v
+   |      result {exit_code, changed_files, diff}
+   |      appended to messages[]
+   |             |
+   +-------------+    any bound trips -> exit 2
+                       requests | wall clock | tokens | same-cmd x3
+
+   every step -> journal.jsonl   (--continue rebuilds context)
+```
 
 ## Beyond the terminal
 
