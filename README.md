@@ -46,6 +46,10 @@ a protocol failure, not a model failure.
   writes to repo + tmp.
 - **Tool results don't lie.** The model sees `changed_files`, a compact
   diff, and a warning when a write-shaped command changed nothing.
+- **What it lacks is deliberate.** Subagents, long-term memory, fuzzy
+  edits, and per-provider plumbing were each measured dead weight or
+  designed out — devin/codex-class harnesses run 25k-240k LOC for the
+  same convergent core.
 - **Measured, not claimed.** Verifier-scored benchmarks (never
   self-reported) in
   [pierrebrunelle/max-results](https://github.com/pierrebrunelle/max-results):
@@ -53,15 +57,25 @@ a protocol failure, not a model failure.
   tasks every harness fails at 4B — the model is the constraint, and
   idefix is built so you can measure that.
 
+## How it works
+
+One loop: POST `messages[]` to `/chat/completions` with a single
+`bash(command)` tool schema. Each tool call runs `bash -c` in the repo
+inside its own process group — credentials scrubbed from env, timeout =
+killpg, output capped head+tail (`--spill` tees overflow to a file) —
+and the result carries `exit_code`, `changed_files`, and a compact diff
+back into history. Loops until the model answers or a bound trips:
+requests, wall clock, prompt tokens, identical-command guard. Every run
+appends `journal.jsonl`; `--continue` rebuilds context from it.
+
 ## Beyond the terminal
 
 - **Editor UI, no UI code:** `acp/idefix-acp.py` (~200-line shim) makes
   idefix an [ACP](https://agentclientprotocol.com) agent inside Zed and
   JetBrains agent panels. Setup: [acp/README.md](acp/README.md).
 - **Embed it:** `--events` streams NDJSON events on stdout.
-- Internals: [ARCHITECTURE.md](ARCHITECTURE.md) · design synthesis:
-  [MEGAPLAN.md](MEGAPLAN.md) · harness comparisons:
-  [COMPARE.md](COMPARE.md).
+- Design dissections and the full harness comparison live in
+  [max-results/bench](https://github.com/pierrebrunelle/max-results/tree/main/bench).
 
 No TUI, no MCP, no cloud providers, no sub-agents — that is pi, aider,
 claude-code. Commands run as your user inside `--repo` unless `--sandbox`.
