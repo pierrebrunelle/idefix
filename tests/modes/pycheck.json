@@ -1,0 +1,17 @@
+{
+  "turns": [
+    {
+      "calls": [
+        {
+          "id": "c1",
+          "command": "echo 'def broken(:\n    pass' > test_syntax.py"
+        }
+      ],
+      "finish": "tool_calls"
+    },
+    {
+      "content": "Done.",
+      "finish": "stop"
+    }
+  ]
+}

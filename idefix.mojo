@@ -62,6 +62,7 @@ struct Config(Copyable):
     var bare: Bool
     var sandbox: Bool
     var bindir: String
+    var py_check: Bool
 
     def __init__(out self):
         self.repo = "."
@@ -96,10 +97,11 @@ struct Config(Copyable):
         self.sandbox = False
         self.bindir = ""
         self.tty = False
+        self.py_check = False
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --py-check --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -231,6 +233,8 @@ def parse_args() raises -> Config:
             cfg.bare = True
         elif arg == "--sandbox":
             cfg.sandbox = True
+        elif arg == "--py-check":
+            cfg.py_check = True
         elif arg == "-h" or arg == "--help":
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
@@ -598,6 +602,32 @@ def transport_fatal(code: Int, resp: String) -> Bool:
     return code == 0 and (
         resp.find("CURL_ERROR:23") >= 0 or resp.find("CURL_ERROR:63") >= 0
     )
+
+
+def py_check_files(cfg: Config, changed_files: String) raises -> String:
+    # Run py_compile on .py files in changed_files, return up to 10 lines of diagnostics.
+    var lines = changed_files.split("\n")
+    var py_files = List[String]()
+    for i in range(len(lines)):
+        var fname = String(lines[i])
+        if fname != "" and fname.find(".py") >= fname.byte_length() - 3:
+            py_files.append(fname)
+    if len(py_files) == 0:
+        return ""
+    var flist = String("")
+    for i in range(min(len(py_files), 20)):
+        var f = String(py_files[i])
+        flist += "'" + f.replace("'", "'\\''") + "' "
+    var cmd = (
+        "for f in " + flist
+        + "; do stat -f%z \"$f\" 2>/dev/null | awk '$1 > 204800 {print \"skipped: >200KB\"; exit 1}' || continue;"
+        + " python3 -m py_compile \"$f\" 2>&1; done | head -10"
+    )
+    var rc = bindings.run_capture(cmd, cfg.repo, 2048, 2000, False)
+    var out = String(rc[0].strip())
+    if out != "":
+        return out
+    return ""
 
 
 def snapshot_find(cfg: Config, hasher: String) -> String:
@@ -1025,6 +1055,13 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                                                     + " changed; the edit may not have applied"
                                                 )
                                             )
+                                        if cfg.py_check and cf != "":
+                                            var pydiags = py_check_files(cfg, cf)
+                                            if pydiags != "":
+                                                result += (
+                                                    ',"py_diagnostics":'
+                                                    + bindings.json_quote(pydiags)
+                                                )
                                     # tree/marks are per-command temp state;
                                     # clean up even when the diff loop did not run
                                     var cl = "rm -f " + qmark + " " + qafter
