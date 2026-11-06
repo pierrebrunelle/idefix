@@ -62,6 +62,7 @@ struct Config(Copyable):
     var bare: Bool
     var sandbox: Bool
     var bindir: String
+    var onboard: Bool
 
     def __init__(out self):
         self.repo = "."
@@ -96,10 +97,11 @@ struct Config(Copyable):
         self.sandbox = False
         self.bindir = ""
         self.tty = False
+        self.onboard = False
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --onboard --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -231,6 +233,8 @@ def parse_args() raises -> Config:
             cfg.bare = True
         elif arg == "--sandbox":
             cfg.sandbox = True
+        elif arg == "--onboard":
+            cfg.onboard = True
         elif arg == "-h" or arg == "--help":
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
@@ -580,6 +584,40 @@ def rebuild_history(journal_text: String, system_msg: String) raises -> String:
     for i in range(keep):
         history += "," + msgs[i]
     return history
+
+
+def build_onboard_context(cfg: Config) raises -> String:
+    var ctx = String("")
+    var hw = bindings.run_capture("ls -la", cfg.repo, 4096, 5000, False)
+    if hw[1] == 0:
+        ctx += "=== repo structure ===\n" + String(hw[0]) + "\n\n"
+    hw = bindings.run_capture(
+        "find . -maxdepth 2 -type f 2>/dev/null | head -60", cfg.repo, 4096, 5000, False
+    )
+    if hw[1] == 0:
+        ctx += "=== file tree ===\n" + String(hw[0]) + "\n\n"
+    var tooling = String("")
+    var tools = List[String]("python3", "make", "git", __list_literal__=NoneType())
+    for tool in tools:
+        var probe = bindings.run_capture(
+            "command -v " + tool, cfg.repo, 256, 5000, False
+        )
+        if probe[1] == 0:
+            tooling += tool + ": " + String(probe[0].strip()) + "\n"
+    if tooling != "":
+        ctx += "=== tooling ===\n" + tooling + "\n"
+    try:
+        var agents = read_file(cfg.repo + "/AGENTS.md")
+        var lines = agents.split("\n")
+        var cap = min(40, len(lines))
+        var excerpt = String("")
+        for i in range(cap):
+            excerpt += lines[i] + "\n"
+        if excerpt != "":
+            ctx += "=== AGENTS.md (first " + String(cap) + " lines) ===\n" + excerpt
+    except:
+        pass
+    return ctx
 
 
 def is_ctx_error(resp: String) -> Bool:
@@ -1356,7 +1394,10 @@ def main() raises:
     )
 
     if cfg.task != "":
-        var umsg = '{"role":"user","content":' + bindings.json_quote(cfg.task) + '}'
+        var user_content = cfg.task
+        if cfg.onboard:
+            user_content = build_onboard_context(cfg) + "\n\n" + cfg.task
+        var umsg = '{"role":"user","content":' + bindings.json_quote(user_content) + '}'
         push_msg(cfg, history, umsg)
         var (final, code) = run_turn(cfg, history, st)
         exit_code = code
