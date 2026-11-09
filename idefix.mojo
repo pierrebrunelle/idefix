@@ -62,6 +62,7 @@ struct Config(Copyable):
     var bare: Bool
     var sandbox: Bool
     var bindir: String
+    var verify: String
 
     def __init__(out self):
         self.repo = "."
@@ -96,10 +97,11 @@ struct Config(Copyable):
         self.sandbox = False
         self.bindir = ""
         self.tty = False
+        self.verify = ""
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --verify [CMD] --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -175,6 +177,22 @@ def parse_args() raises -> Config:
                 cfg.resume_file = v
             else:
                 die("unhandled flag: " + arg, 64)
+        elif arg == "--verify":
+            i += 1
+            if i >= len(a):
+                cfg.verify = "auto"
+                i -= 1
+            else:
+                var next = String(a[i])
+                if next.find("-") == 0:
+                    cfg.verify = "auto"
+                    i -= 1
+                elif next.find("/") >= 0 or next.find(" ") >= 0 or next == "pytest" or next == "python3":
+                    cfg.verify = next
+                else:
+                    # likely a positional argument, not a command
+                    cfg.verify = "auto"
+                    i -= 1
         elif (
             arg == "--max-requests" or arg == "--max-seconds"
             or arg == "--max-command-seconds" or arg == "--max-output-bytes"
@@ -643,6 +661,37 @@ struct TurnStats(Copyable):
         self.cmd_repeats = 0
 
 
+def discover_verify_cmd(cfg: Config) -> String:
+    if bindings.file_exists(cfg.repo + "/check.sh"):
+        return "./check.sh"
+    if bindings.file_exists(cfg.repo + "/pytest.ini") or bindings.file_exists(cfg.repo + "/setup.cfg") or bindings.file_exists(cfg.repo + "/pyproject.toml"):
+        try:
+            var r = bindings.run_capture("pytest --co -q 2>/dev/null | head -1", cfg.repo, 256, 5000, False)
+            if r[1] == 0 and r[0].find("error") < 0:
+                return "pytest"
+        except:
+            pass
+    try:
+        var r = bindings.run_capture("find . -maxdepth 1 -name '*_test.py' -print -quit", cfg.repo, 256, 5000, False)
+        if r[1] == 0 and String(r[0].strip()) != "":
+            return "python3 -m unittest discover -s . -p '*_test.py' -v"
+    except:
+        pass
+    return ""
+
+
+def run_verify_cmd(cfg: Config, cmd: String, deadline: Int, output_cap: Int) raises -> Tuple[String, Bool]:
+    var left_ms = (deadline - bindings.now_seconds()) * 1000
+    if left_ms < 1:
+        return "", False
+    var timeout_ms = min(housekeeping_ms(deadline, 30000), cfg.max_command_ms)
+    if timeout_ms < 1:
+        timeout_ms = 1
+    var r = bindings.run_capture(cmd, cfg.repo, output_cap, timeout_ms, False)
+    var passed = r[1] == 0
+    return r[0], passed
+
+
 def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tuple[String, Int]:
     # One task: loop model calls + bash execution until the model answers
     # with plain text or a budget trips. Returns (final_answer, exit_code).
@@ -1089,6 +1138,28 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     + ',"prompt_tokens":' + String(st.last_prompt_tokens)
                     + ',"limit":' + String(cfg.compact_at) + "}",
                 )
+            # verify gate: run check before accepting done-claim
+            if cfg.verify != "" and exit_code == 0:
+                var verify_cmd = cfg.verify
+                if verify_cmd == "auto":
+                    verify_cmd = discover_verify_cmd(cfg)
+                if verify_cmd != "":
+                    try:
+                        var (out, passed) = run_verify_cmd(cfg, verify_cmd, deadline, 8192)
+                        if not passed:
+                            bindings.eprint("[idefix] verify failed: " + verify_cmd)
+                            journal(cfg, "{\"ev\":\"verify_fail\",\"ts\":" + String(bindings.now_seconds()) + "}")
+                            var re_ask_count = 0
+                            for j in range(history.count("\"ev\":\"verify_fail\"")):
+                                re_ask_count += 1
+                            if re_ask_count < 3:
+                                var verify_msg = "{\"role\":\"user\",\"content\":\"Verification failed:\\n" + bindings.json_quote(out) + "\\n\\nRun the verification check and fix any issues found.\"}"
+                                push_msg(cfg, history, verify_msg)
+                                continue
+                            else:
+                                bindings.eprint("[idefix] verify: cap 3 re-asks reached, accepting")
+                    except:
+                        pass
             break
         if msg_owner:
             bindings.cjson_del(msg_owner)
