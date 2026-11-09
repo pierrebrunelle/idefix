@@ -1,0 +1,8 @@
+{"turns": [
+  {"finish": "error_500"},
+  {"finish": "error_500"},
+  {"finish": "error_500"},
+  {"finish": "error_500"},
+  {"calls": [{"id": "call_ok", "command": "echo done"}], "finish": "tool_calls"},
+  {"content": "Done.", "finish": "stop"}
+]}

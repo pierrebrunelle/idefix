@@ -62,6 +62,7 @@ struct Config(Copyable):
     var bare: Bool
     var sandbox: Bool
     var bindir: String
+    var err_echo: Bool
 
     def __init__(out self):
         self.repo = "."
@@ -96,10 +97,11 @@ struct Config(Copyable):
         self.sandbox = False
         self.bindir = ""
         self.tty = False
+        self.err_echo = False
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --err-echo --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -231,6 +233,8 @@ def parse_args() raises -> Config:
             cfg.bare = True
         elif arg == "--sandbox":
             cfg.sandbox = True
+        elif arg == "--err-echo":
+            cfg.err_echo = True
         elif arg == "-h" or arg == "--help":
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
@@ -297,8 +301,8 @@ def parse_args() raises -> Config:
         die("repo path is not a directory: " + cfg.repo, 64)
     if cfg.bare:
         # bench-compat mode: every behavior added after the original loop off
-        if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox:
-            die("--bare disables --continue, --resume, --notify and --sandbox", 64)
+        if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox or cfg.err_echo:
+            die("--bare disables --continue, --resume, --notify, --sandbox and --err-echo", 64)
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
@@ -649,6 +653,7 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
     var deadline = bindings.now_seconds() + cfg.max_seconds
     var exit_code = 0
     var final = ""
+    var err_echo_fired = False
     # per-turn state: the REPL shares st across turns
     st.requests = 0
     st.cmd_repeats = 0
@@ -703,6 +708,16 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                 req_status(cfg, st.requests, req_s)
             code = r[0]
             resp = r[1]
+        if not cfg.bare and not err_echo_fired and (code == 0 or code >= 500) and not transport_fatal(code, resp) and cfg.err_echo:
+            # inject error feedback after retries exhaust
+            var err_msg = "http " + String(code)
+            var preview_len = min(resp.byte_length(), 150)
+            if preview_len > 0:
+                err_msg += ": " + String(resp[byte= : preview_len])
+            var feedback = "the server rejected your last request: " + err_msg + "; re-issue a smaller or corrected tool call"
+            push_msg(cfg, history, '{"role":"user","content":' + bindings.json_quote(feedback) + "}")
+            err_echo_fired = True
+            continue
         if code == 0 and (
             bindings.now_seconds() > deadline or resp.find("CURL_ERROR:28") >= 0
         ):
