@@ -61,6 +61,7 @@ struct Config(Copyable):
     var journal_path: String
     var bare: Bool
     var sandbox: Bool
+    var repair_call: Bool
     var bindir: String
 
     def __init__(out self):
@@ -94,12 +95,13 @@ struct Config(Copyable):
         self.journal_path = ""
         self.bare = False
         self.sandbox = False
+        self.repair_call = False
         self.bindir = ""
         self.tty = False
 
 
 def usage() -> String:
-    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
+    return "usage: idefix --repo DIR [flags] [--] [TASK]   (no TASK -> interactive REPL on stdin)\n  env: IDEFIX_BASE_URL (default http://127.0.0.1:8000/v1), IDEFIX_MODEL (required), IDEFIX_API_KEY, IDEFIX_STATE_DIR; MAX_* aliases accepted\n  flags: --instructions FILE --max-requests N --max-seconds N --max-command-seconds N --max-output-bytes N --max-http-bytes N --max-prompt-tokens N --temperature F --transcript FILE --max-calls-per-response N -v\n         --compact-at N --compact-keep N --retries N --no-loop-guard --spill --events --notify CMD --state-dir DIR --continue --resume FILE --bare --sandbox --repair-call --version\n  subcommand: `idefix edit FILE` applies SEARCH/REPLACE blocks from stdin; a task literally named `edit` needs `idefix -- edit`\n  state: journal + status under --state-dir | $IDEFIX_STATE_DIR | $HOME/.idefix; --continue resumes this repo's session\n  REPL: shared context across lines; /reset clears, /quit|/exit or Ctrl-D exits, !CMD runs a shell command\n  tool commands run without env vars named for credentials (KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL)"
 
 
 def read_file(path: String) raises -> String:
@@ -231,6 +233,8 @@ def parse_args() raises -> Config:
             cfg.bare = True
         elif arg == "--sandbox":
             cfg.sandbox = True
+        elif arg == "--repair-call":
+            cfg.repair_call = True
         elif arg == "-h" or arg == "--help":
             print(usage())
             _ = external_call["exit", c_int](c_int(0))
@@ -297,8 +301,8 @@ def parse_args() raises -> Config:
         die("repo path is not a directory: " + cfg.repo, 64)
     if cfg.bare:
         # bench-compat mode: every behavior added after the original loop off
-        if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox:
-            die("--bare disables --continue, --resume, --notify and --sandbox", 64)
+        if cfg.cont or cfg.resume_file != "" or cfg.notify != "" or cfg.sandbox or cfg.repair_call:
+            die("--bare disables --continue, --resume, --notify, --sandbox and --repair-call", 64)
         cfg.compact_at = 0
         cfg.retries = 0
         cfg.loop_guard = False
@@ -592,6 +596,17 @@ def is_ctx_error(resp: String) -> Bool:
     )
 
 
+def is_tool_call_error(resp: String) -> Bool:
+    # detect malformed tool call parse errors from the server
+    var low = resp.lower()
+    return (
+        low.find("tool_call") >= 0 or low.find("tool call") >= 0
+        or low.find("invalid.*argument") >= 0 or low.find("argument") >= 0 and low.find("error") >= 0
+        or low.find("parse") >= 0 and low.find("tool") >= 0
+        or low.find("malformed") >= 0
+    )
+
+
 def transport_fatal(code: Int, resp: String) -> Bool:
     # CURL_ERROR 23 (memstream write) and 63 (http-bytes cap) are
     # deterministic; retrying them only spends request budget
@@ -631,6 +646,7 @@ struct TurnStats(Copyable):
     var start_s: Int
     var last_cmd: String
     var cmd_repeats: Int
+    var repair_calls_count: Int
 
     def __init__(out self):
         self.requests = 0
@@ -641,6 +657,7 @@ struct TurnStats(Copyable):
         self.start_s = 0
         self.last_cmd = ""
         self.cmd_repeats = 0
+        self.repair_calls_count = 0
 
 
 def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tuple[String, Int]:
@@ -730,6 +747,27 @@ def run_turn(cfg: Config, mut history: String, mut st: TurnStats) raises -> Tupl
                     st.requests += 1
                     code = r[0]
                     resp = r[1]
+        if not cfg.bare and cfg.repair_call and (code == 400 or code >= 500) and is_tool_call_error(resp):
+            # server rejected the tool call response; ask for a re-issue instead of
+            # blind retry. cap at 2 repairs per run.
+            if st.repair_calls_count < 2 and st.requests < cfg.max_requests:
+                st.repair_calls_count += 1
+                bindings.eprint("[idefix] malformed tool call rejected; requesting re-issue (attempt " + String(st.repair_calls_count) + ")")
+                journal(
+                    cfg,
+                    '{"ev":"repair_call","ts":' + String(bindings.now_seconds())
+                    + ',"attempt":' + String(st.repair_calls_count) + "}",
+                )
+                push_msg(
+                    cfg, history,
+                    '{"role":"user","content":"Your last tool call was rejected as malformed; re-issue it"}',
+                )
+                # continue the loop to get a new response
+                continue
+            elif st.repair_calls_count >= 2:
+                bindings.eprint("[idefix] http " + String(code) + ": malformed tool call repair limit exceeded (2 repairs)")
+                exit_code = 3
+                break
         if code != 200:
             bindings.eprint("[idefix] http " + String(code) + ": " + resp[byte= : min(resp.byte_length(), 300)])
             if st.requests >= cfg.max_requests and not transport_fatal(code, resp):

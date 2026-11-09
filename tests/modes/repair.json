@@ -1,0 +1,4 @@
+{"turns": [
+  {"calls": [{"id": "call_1", "command": "echo repair-test"}], "finish": "tool_calls"},
+  {"content": "Done.", "finish": "stop"}
+]}
